@@ -13,7 +13,9 @@ import { styled } from "@mui/material/styles";
 import axiosInstance from "../../api/axiosInstance";
 import { useAuthContext } from "../../context/AuthProvider";
 import MemberAvatar from "../ui/MemberAvatar";
-import { useSnackbar } from '../../context/SnackbarProvider'
+import { useSnackbar } from "../../context/SnackbarProvider";
+import { useNavigate } from "react-router-dom";
+import { useMediasoup } from "../../hooks/useMediasoup";
 
 export type Member = {
   id: string;
@@ -22,15 +24,15 @@ export type Member = {
 };
 
 export type Group = {
-  id: string
-  description?: string | null
-  language: string
-  level: string
-  max_members?: number | null
-  owner?: { id: string; name?: string | null; email?: string | null }
-  memberships?: Member[]
-  _count?: { memberships?: number }
-}
+  id: string;
+  description?: string | null;
+  language: string;
+  level: string;
+  max_members?: number | null;
+  owner?: { id: string; name?: string | null; email?: string | null };
+  memberships?: Member[];
+  _count?: { memberships?: number };
+};
 
 const StyledCard = styled(Card)(({ theme }) => ({
   minWidth: 430,
@@ -55,9 +57,11 @@ export default function GroupCard({
 }: {
   group: Group;
   onJoinSuccess?: (groupId: string) => void;
+  onLeaveSuccess?: (groupId: string) => void;
   hideJoin?: boolean;
 }) {
-  const { showSnackbar } = useSnackbar()
+  const navigate = useNavigate();
+  const { showSnackbar } = useSnackbar();
   const { user } = useAuthContext();
   const [loading, setLoading] = useState(false);
 
@@ -70,19 +74,36 @@ export default function GroupCard({
     typeof group.max_members === "number" && memberCount >= group.max_members;
 
   const handleJoin = async () => {
-    if (!user) return showSnackbar('Please sign in to join a group', { severity: 'info' })
-    if (isOwner) return showSnackbar('You are the owner of this group', { severity: 'info' })
-    if (isAlreadyMember) return showSnackbar('You are already a member of this group', { severity: 'info' })
-    if (isFull) return showSnackbar('This group is full', { severity: 'info' })
+    if (!user)
+      return showSnackbar("Please sign in to join a group", {
+        severity: "info",
+      });
+    if (isOwner)
+      return showSnackbar("You are the owner of this group", {
+        severity: "info",
+      });
+    if (isAlreadyMember)
+      return showSnackbar("You are already a member of this group", {
+        severity: "info",
+      });
+    if (isFull) return showSnackbar("This group is full", { severity: "info" });
 
     setLoading(true);
     try {
       await axiosInstance.post(`/groups/${group.id}/join`);
-      showSnackbar('Joined group successfully!')
+
+      showSnackbar("Joined group successfully!");
       onJoinSuccess?.(group.id);
+
+      // open the room in a new tab
+      const roomUrl = `/room/${group.id}`;
+
+      window.open(roomUrl, "_blank", "noopener,noreferrer");
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Failed to join group', { severity: 'error' })
+      showSnackbar(err?.response?.data?.error || "Failed to join group", {
+        severity: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -135,8 +156,7 @@ export default function GroupCard({
             </Typography>
           </Box>
         </Box>
-        <Stack 
-        direction="row" spacing={2} sx={{ mx: 4 }}>
+        <Stack direction="row" spacing={2} sx={{ mx: 4 }}>
           {members.slice(0, 2).map((m, i) => (
             <MemberAvatar
               sxAvatar={{

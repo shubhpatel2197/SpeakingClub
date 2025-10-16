@@ -7,15 +7,17 @@ import { ColorModeProvider } from './context/ColorModeContext'
 import { SnackbarProvider } from './context/SnackbarProvider'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+  // <React.StrictMode>
     <ColorModeProvider>
       <BrowserRouter>
+      <SnackbarProvider>
         <AuthProvider>
-          <SnackbarProvider>
+          
           <App />
-          </SnackbarProvider>
+          
         </AuthProvider>
+        </SnackbarProvider>
       </BrowserRouter>
     </ColorModeProvider>
-  </React.StrictMode>
+  // </React.StrictMode>
 )

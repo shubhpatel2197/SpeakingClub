@@ -1,34 +1,37 @@
+import React, { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import SignIn from './components/auth/SignIn'
 import SignUp from './components/auth/SignUp'
 import './App.css'
 import { useAuthContext } from './context/AuthProvider'
-import { JSX } from 'react'
 import Home from './pages/Home'
 import NavBar from './components/ui/Navbar'
 
-// protected wrapper
-function ProtectedRoute({ children }: { children: JSX.Element }) {
+// lazy load Room to reduce initial bundle
+const Room = React.lazy(() => import('./pages/Room'))
+
+// ProtectedRoute accepts any React node as children
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
 
   if (loading) return <div>Loading...</div>
   if (!user) return <Navigate to="/signin" replace />
-  return children
+  return <>{children}</>
 }
 
-// public wrapper
-function PublicRoute({ children }: { children: JSX.Element }) {
+// PublicRoute accepts any React node as children
+function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
 
   if (loading) return <div>Loading...</div>
   if (user) return <Navigate to="/" replace />
-  return children
+  return <>{children}</>
 }
 
 function App() {
   return (
     <div className="app">
-      {/* NavBar is always visible */}
+      
       <NavBar />
 
       <main>
@@ -61,7 +64,19 @@ function App() {
             }
           />
 
-          {/* Fallback for unknown routes */}
+          {/* Room route (protected) - lazy loaded */}
+          <Route
+            path="/room/:id"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Loading room...</div>}>
+                  <Room />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -1,0 +1,345 @@
+import http from 'http'
+import { Server as IOServer, Socket } from 'socket.io'
+import { parse as parseCookie } from 'cookie'
+import jwt from 'jsonwebtoken'
+import { getOrCreateRoom, getRoom, transportToRoom } from './mediasoup/roomManager'
+import { removeUserFromGroup } from './services/groupService'
+import prisma from './lib/prisma'
+
+type JwtPayload = {
+  userId: string
+  iat: number
+  exp: number
+  name?: string
+  email?: string
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
+
+type AuthedUser = { id: string; name?: string; email?: string }
+
+type AuthedSocket = Socket & {
+  data: {
+    user?: AuthedUser
+    roomId?: string
+    sendTransportId?: string
+    recvTransportId?: string
+    transports?: Set<string>
+    producers?: Set<string>
+  }
+}
+
+function getUserFromHandshake(socket: Socket): AuthedUser | null {
+  const raw = socket.handshake?.headers?.cookie || ''
+  const cookies = parseCookie(raw || '')
+  const token = cookies.token
+  if (!token) return null
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload
+    return { id: payload.userId, name: payload.name, email: payload.email }
+  } catch {
+    return null
+  }
+}
+
+/** Utility: find which socket owns a producerId + user identity */
+function findOwnerOfProducer(io: IOServer, producerId: string) {
+  for (const [, sRaw] of io.sockets.sockets) {
+    const s = sRaw as AuthedSocket
+    if (s.data.producers?.has(producerId)) {
+      return { socketId: s.id, user: s.data.user }
+    }
+  }
+  return null
+}
+
+export function attachSocketServer(io: IOServer) {
+
+  // --- Auth gate ---
+  io.use((socket, next) => {
+    const s = socket as AuthedSocket
+    const user = getUserFromHandshake(socket)
+    if (!user) return next(new Error('unauthorized'))
+    s.data.user = user
+    next()
+  })
+
+  // --- Groups channel (for Home list live updates) ---
+  io.on('connection', (raw) => {
+    const socket = raw as AuthedSocket
+    console.log('[SOCKET] connected', socket.id, 'user=', socket.data.user)
+
+    socket.on('groups:subscribe', () => {
+      socket.join('groups')
+      // optional: immediate refresh ping
+      socket.emit('groups:refresh')
+    })
+
+    socket.on('groups:unsubscribe', () => {
+      socket.leave('groups')
+    })
+
+    // -------- Room signaling (mediasoup) --------
+
+    /** JOIN */
+    socket.on('joinRoom', async ({ roomId }: { roomId: string }, cb?: (res: any) => void) => {
+      try {
+        const room = await getOrCreateRoom(roomId)
+        await socket.join(roomId)
+        socket.data.roomId = roomId
+
+        const peers = Array.from(io.sockets.adapter.rooms.get(roomId) || [])
+          .filter((sid) => sid !== socket.id)
+          .map((sid) => {
+            const s = io.sockets.sockets.get(sid) as AuthedSocket | undefined
+            const u = s?.data.user || {}
+            return { peerId: sid, userId: (u as AuthedUser).id, name: (u as AuthedUser).name ?? (u as AuthedUser).email ?? sid }
+          })
+
+        // Include all current producers with owner & paused state
+        const producers = Array.from(room.producers.values()).map((p) => {
+          const owner = findOwnerOfProducer(io, p.id)
+          return {
+            id: p.id,
+            producerPeerId: owner?.socketId,
+            userId: owner?.user?.id,
+            name: owner?.user?.name ?? owner?.user?.email ?? owner?.socketId,
+            muted: !!p.paused,
+          }
+        })
+
+        socket.emit('roomInfo', { peers, producers })
+
+        const u = socket.data.user || {}
+        socket.to(roomId).emit('peerJoined', {
+          peerId: socket.id,
+          userId: (u as AuthedUser).id,
+          name: (u as AuthedUser).name ?? (u as AuthedUser).email ?? socket.id,
+        })
+
+        // update group list (member count) for everyone subscribed to 'groups'
+
+        cb?.({ ok: true })
+        console.log('[SRV] joinRoom ok', { roomId, sid: socket.id })
+      } catch (e: any) {
+        console.error('[SRV] joinRoom error', e)
+        cb?.({ error: String(e?.message || e) })
+      }
+    })
+
+    /** Router caps */
+    socket.on('getRouterRtpCapabilities', ({ roomId }: { roomId: string }, cb: (res: any) => void) => {
+      try {
+        const room = getRoom(roomId)
+        if (!room) return cb({ error: 'room not found' })
+        cb({ routerRtpCapabilities: room.getRouterRtpCapabilities() })
+      } catch (e: any) {
+        cb({ error: String(e?.message || e) })
+      }
+    })
+
+    /** Create transport */
+    socket.on(
+      'createWebRtcTransport',
+      async (
+        { roomId, direction }: { roomId: string; direction: 'send' | 'recv' },
+        cb: (res: any) => void
+      ) => {
+        try {
+          const room = getRoom(roomId)
+          if (!room) return cb({ error: 'room not found' })
+
+          const params = await room.createWebRtcTransport()
+
+          // Remember which room this transport belongs to (handled inside roomManager via transportToRoom)
+          if (direction === 'send') socket.data.sendTransportId = params.id
+          else socket.data.recvTransportId = params.id
+
+          socket.data.transports ??= new Set<string>()
+          socket.data.transports.add(params.id)
+
+          console.log('[SRV] createWebRtcTransport', { roomId, direction, tid: params.id })
+          cb(params)
+        } catch (e: any) {
+          console.error('[SRV] createWebRtcTransport error', e)
+          cb({ error: String(e?.message || e) })
+        }
+      }
+    )
+
+    /** Connect transport */
+    socket.on(
+      'connectTransport',
+      async (
+        { transportId, dtlsParameters }: { transportId: string; dtlsParameters: any },
+        cb: (res: any) => void
+      ) => {
+        try {
+          const roomId = transportToRoom.get(transportId)
+          if (!roomId) return cb({ error: 'unknown transport' })
+          const room = getRoom(roomId)
+          if (!room) return cb({ error: 'room not found' })
+          await room.connectTransport(transportId, dtlsParameters)
+          console.log('[SRV] connectTransport ok', { roomId, transportId })
+          cb({ ok: true })
+        } catch (e: any) {
+          console.error('[SRV] connectTransport error', e)
+          cb({ error: String(e?.message || e) })
+        }
+      }
+    )
+
+    /** Produce */
+    socket.on(
+      'produce',
+      async (
+        { transportId, kind, rtpParameters }: { transportId: string; kind: 'audio' | 'video'; rtpParameters: any },
+        cb: (res: any) => void
+      ) => {
+        try {
+          const roomId = transportToRoom.get(transportId)
+          if (!roomId) return cb({ error: 'unknown transport' })
+          const room = getRoom(roomId)
+          if (!room) return cb({ error: 'room not found' })
+
+          const producer = await room.produce(transportId, kind, rtpParameters)
+          socket.data.producers ??= new Set<string>()
+          socket.data.producers.add(producer.id)
+
+          const u = socket.data.user || {}
+          socket.to(roomId).emit('newProducer', {
+            producerId: producer.id,
+            producerPeerId: socket.id,
+            userId: (u as AuthedUser).id,
+            name: (u as AuthedUser).name ?? (u as AuthedUser).email ?? socket.id,
+            muted: !!producer.paused,
+          })
+
+          console.log(`[Room:${room.id}] producer created id=${producer.id} paused=${producer.paused}`)
+          cb({ producerId: producer.id })
+        } catch (e: any) {
+          console.error('[SRV] produce error', e)
+          cb({ error: String(e?.message || e) })
+        }
+      }
+    )
+
+    /** Consume */
+    socket.on(
+      'consume',
+      async (
+        { roomId, producerId, rtpCapabilities }: { roomId: string; producerId: string; rtpCapabilities: any },
+        cb: (res: any) => void
+      ) => {
+        try {
+          const room = getRoom(roomId)
+          if (!room) return cb({ error: 'room not found' })
+
+          const consumerTransportId = socket.data.recvTransportId
+          if (!consumerTransportId) return cb({ error: 'no recv transport for this socket' })
+
+          const data = await room.consume(consumerTransportId, producerId, rtpCapabilities)
+
+          // Auto-resume to avoid client race
+          const consumer = (room as any).consumers?.get?.(data.id)
+          if (consumer && consumer.paused) {
+            try {
+              await consumer.resume()
+            } catch {}
+          }
+
+          console.log('[SRV] consume ok', { roomId, consumerId: data.id, producerId })
+          cb(data)
+        } catch (e: any) {
+          console.error('[SRV] consume error', e)
+          cb({ error: String(e?.message || e) })
+        }
+      }
+    )
+
+    /** Producer mute/unmute (pause/resume) */
+    socket.on('producerMuted', async ({ muted }: { muted: boolean }, cb?: (res: any) => void) => {
+      try {
+        const roomId = socket.data.roomId
+        const room = roomId ? getRoom(roomId) : undefined
+        if (!room) return cb?.({ error: 'room not found' })
+
+        if (socket.data.producers) {
+          const u = socket.data.user || {}
+          for (const pid of socket.data.producers) {
+            const p = room.producers.get(pid)
+            if (!p) continue
+            if (muted && !p.paused) await p.pause()
+            if (!muted && p.paused) await p.resume()
+            io.to(roomId!).emit('producerMuted', {
+              producerId: pid,
+              peerId: socket.id,
+              userId: (u as AuthedUser).id,
+              muted,
+            })
+          }
+        }
+        cb?.({ ok: true })
+      } catch (e: any) {
+        console.error('[SRV] producerMuted error', e)
+        cb?.({ error: String(e?.message || e) })
+      }
+    })
+
+    /** Leave & cleanup */
+    socket.on('leaveRoom', async () => {
+      await cleanupPeer(socket, io)
+    })
+    socket.on('disconnecting', async () => {
+      await cleanupPeer(socket, io)
+    })
+    socket.on('disconnect', () => {
+      console.log('[SOCKET] disconnected', socket.id)
+    })
+  })
+
+  async function cleanupPeer(socket: AuthedSocket, io: IOServer) {
+    const roomId = socket.data.roomId
+    if (!roomId) return
+    const room = getRoom(roomId)
+    if (!room) return
+
+    socket.to(roomId).emit('peerLeft', { peerId: socket.id })
+
+    if (socket.data.producers) {
+      for (const pid of socket.data.producers) {
+        try {
+          await room.closeProducer(pid)
+        } catch {}
+        socket.to(roomId).emit('producerClosed', { producerId: pid })
+      }
+      socket.data.producers.clear()
+    }
+    if (socket.data.transports) {
+      for (const tid of socket.data.transports) {
+        try {
+          await room.destroyTransport(tid)
+        } catch {}
+      }
+      socket.data.transports.clear()
+    }
+
+    try {
+      await socket.leave(roomId)
+    } catch {}
+
+    // update DB membership if you track it
+    const userId = socket.data.user?.id
+    if (userId) {
+      await removeUserFromGroup(userId, roomId).catch((e) => {
+        console.error('Error removing user from group on disconnect:', e)
+      })
+    }
+
+    socket.data.roomId = undefined
+
+  }
+
+
+  return io
+}

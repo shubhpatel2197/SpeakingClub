@@ -2,6 +2,8 @@
 import { Request, Response } from 'express'
 import prisma from '../lib/prisma'
 import { Prisma } from '@prisma/client'
+import { deleteGroupById } from '../services/groupService'
+import { io } from '../index'
 
 /**
  * Create a group.
@@ -15,7 +17,7 @@ export async function createGroup(req: Request, res: Response) {
   const userId = req.user?.id
   if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { description, language, level, max_members } = req.body
+  const { description, language, level, max_members, name } = req.body
 
   // check if user is already member of a group
   const existingMembership = await prisma.membership.findUnique({
@@ -43,6 +45,7 @@ export async function createGroup(req: Request, res: Response) {
         owner: { connect: { id: userId } },
         memberships: {
           create: {
+            name: name || "2",
             user: { connect: { id: userId } },
             role: 'owner',
           }
@@ -50,7 +53,7 @@ export async function createGroup(req: Request, res: Response) {
       },
       include: { memberships: true }
     })
-
+    io.to('groups').emit('groups:upsert', { group }) 
     return res.status(201).json({ group })
   } catch (err: any) {
     console.error(err)
@@ -132,11 +135,14 @@ export async function joinGroup(req: Request, res: Response) {
   try {
     const membership = await prisma.membership.create({
       data: {
+        name: req.user.name || "User",
         user: { connect: { id: userId } },
         group: { connect: { id: groupId } },
         role: 'member'
       }
     })
+    const group = await prisma.group.findUnique({ where: { id: groupId }, include: { memberships: true } })
+    io.to('groups').emit('groups:upsert', { group: group })
     return res.json({ membership })
   } catch (err: any) {
     console.error(err)
@@ -152,7 +158,7 @@ export async function joinGroup(req: Request, res: Response) {
  */
 export async function leaveGroup(req: Request, res: Response) {
   const userId = req.user?.id
-  const groupId = req.params.id
+  const groupId = req.params.roomId
   if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
   const membership = await prisma.membership.findUnique({ where: { userId } })
@@ -163,9 +169,33 @@ export async function leaveGroup(req: Request, res: Response) {
   // prevent owner from leaving (owner should delete group or transfer ownership)
   const group = await prisma.group.findUnique({ where: { id: groupId } })
   if (group?.ownerId === userId) {
-    return res.status(403).json({ error: 'Owner cannot leave the group. Transfer ownership or delete group.' })
+    await deleteGroupById(groupId, userId)
   }
 
   await prisma.membership.delete({ where: { id: membership.id } })
+  const groupUpdated = await prisma.group.findUnique({ where: { id: groupId }, include: { memberships: true } })
+  io.to('groups').emit('groups:upsert', { group: groupUpdated })
   return res.json({ ok: true })
+}
+
+
+export async function deleteGroup(req: Request, res: Response) {
+  const userId = req.user?.id
+  const groupId = req.params.id
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+
+  try {
+    const result = await deleteGroupById(groupId, userId)
+    io.to('groups').emit('groups:remove', { id: groupId })
+    return res.json(result)
+  } catch (error: any) {
+    console.error(error)
+    if (error.message === 'Group not found') {
+      return res.status(404).json({ error: error.message })
+    }
+    if (error.message.includes('Only the owner')) {
+      return res.status(403).json({ error: error.message })
+    }
+    return res.status(500).json({ error: 'Internal server error' })
+  }
 }

@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import prisma from '../lib/prisma'
+import { IncomingMessage } from 'http'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
 
@@ -61,5 +62,54 @@ export function requireAuth(options: AuthOptions = { requireUser: true }) {
       console.error('Auth middleware error', err)
       return res.status(500).json({ error: 'Internal server error' })
     }
+  }
+}
+
+export async function verifyTokenFromRequest(req: IncomingMessage) {
+  try {
+    // 1) Try reading token from cookie header manually
+    const cookieHeader = req.headers.cookie || ''
+    let token: string | undefined
+
+    // Parse cookies manually
+    const cookies: Record<string, string> = {}
+    cookieHeader.split(';').forEach((pair) => {
+      const [k, v] = pair.trim().split('=')
+      if (k && v) cookies[k] = decodeURIComponent(v)
+    })
+    if (cookies.token) token = cookies.token
+
+    // 2) Fallback: Authorization header (Bearer)
+    if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1]
+    }
+
+    if (!token) {
+      return null
+    }
+
+    // 3) Verify JWT
+    let payload: any
+    try {
+      payload = jwt.verify(token, JWT_SECRET)
+    } catch (err) {
+      console.warn('[verifyTokenFromRequest] invalid token', err)
+      return null
+    }
+
+    // 4) Lookup user in DB
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, name: true },
+    })
+
+    if (!user) {
+      return null
+    }
+
+    return user
+  } catch (err) {
+    console.error('[verifyTokenFromRequest] error', err)
+    return null
   }
 }

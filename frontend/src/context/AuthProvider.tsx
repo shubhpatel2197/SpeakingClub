@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import axiosInstance from '../api/axiosInstance'
 import { useNavigate } from 'react-router-dom'
+import { useSnackbar } from './SnackbarProvider'
+import axios, { AxiosError } from 'axios'
 
 export type User = {
   id: string
@@ -19,20 +21,22 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { showSnackbar } = useSnackbar()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   const fetchUser = async () => {
     setLoading(true)
-    try {
-      const res = await axiosInstance.get('/user/me')
-      setUser(res.data.user ?? null)
-    } catch (err) {
-      setUser(null)
-    } finally {
-      setLoading(false)
-    }
+   try {
+  const { data } = await axiosInstance.get('/user/me')
+  setUser(data?.user || null)
+} catch (err) {
+  setUser(null)
+  // showSnackbar(err as string, { severity: 'error' })
+} finally {
+  setLoading(false)
+}
   }
 
   useEffect(() => {

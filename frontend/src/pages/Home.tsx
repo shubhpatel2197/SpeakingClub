@@ -3,80 +3,99 @@ import { Box, Button, Stack, Typography, CircularProgress } from '@mui/material'
 import { useAuthContext } from '../context/AuthProvider'
 import AddGroupModal from '../components/groups/AddGroupModal'
 import GroupCard from '../components/groups/GroupCard'
-import { useGroups, Group } from '../hooks/useGroups'
+import { useGroups } from '../hooks/useGroups'
 
 export default function Home() {
   const { user } = useAuthContext()
+  const { groups, loading, error, refresh } = useGroups()
   const [open, setOpen] = React.useState(false)
 
-  const { groups, loading, error, refresh, loadMore, hasMore } = useGroups()
-
-  console.log('Groups:', groups)
-
   const handleOpen = () => setOpen(true)
-
-  // called when AddGroupModal successfully creates a group
   const handleClose = async () => {
-    await refresh()
     setOpen(false)
+    await refresh() // refresh after modal closes (new group created)
   }
 
-  // passed to GroupCard so it can refresh parent list after join
-  const onJoinSuccess = async (groupId: string) => {
-    await refresh()
+  const handleJoinOrLeave = async () => {
+    await refresh() // refresh list after joining/leaving
+  }
+
+  const renderContent = () => {
+    if (loading && groups.length === 0) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      )
+    }
+
+    if (error) {
+      return (
+        <Typography color="error" sx={{ textAlign: 'center', py: 4 }}>
+          Failed to load groups
+        </Typography>
+      )
+    }
+
+    if (groups.length === 0) {
+      return (
+        <Typography sx={{ textAlign: 'center', py: 4 }}>
+          No groups found. Create the first one!
+        </Typography>
+      )
+    }
+
+    return (
+      <Stack direction="row" flexWrap="wrap" gap={3} justifyContent="flex-start">
+        {groups.map(group => (
+          <GroupCard
+            key={group.id}
+            group={group}
+            onJoinSuccess={handleJoinOrLeave}
+            onLeaveSuccess={handleJoinOrLeave}
+          />
+        ))}
+      </Stack>
+    )
   }
 
   return (
-    <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', py: 2 }}>
-        
-        <Button variant="contained" color="primary" onClick={handleOpen} sx={{ px: 3, borderRadius: 1 }}>
+    <Box sx={{ mx: '120px' }}>
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          py: 2,
+        }}
+      >
+        <Typography variant="h5" fontWeight={600}>
+          Groups
+        </Typography>
+
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleOpen}
+          sx={{ px: 3, borderRadius: 1 }}
+        >
           Add Group
         </Button>
       </Box>
 
-      <AddGroupModal open={open} handleClose={handleClose}/>
+      {/* Add Group Modal */}
+      <AddGroupModal open={open} handleClose={handleClose} />
 
-      <Box
-        sx={{
-          minHeight: '60vh',
-          marginTop: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
-          width: '100%',
-        }}
-      >
-        {loading && groups.length === 0 ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress />
-          </Box>
-        ) : error ? (
-          <Typography color="error">Failed to load groups</Typography>
-        ) : groups.length === 0 ? (
-          <Typography>No groups found. Create the first one!</Typography>
-        ) : (
-          <Stack direction="row" flexWrap="wrap" gap={3}>
-            {groups.map((group: Group) => (
-              <GroupCard key={group.id} group={group} onJoinSuccess={onJoinSuccess} />
-            ))}
-          </Stack>
-        )}
+      {/* Groups List */}
+      <Box sx={{ minHeight: '60vh', mt: 2 }}>{renderContent()}</Box>
 
-        {hasMore && !loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-            <Button variant="outlined" onClick={() => loadMore()}>
-              Load more
-            </Button>
-          </Box>
-        )}
-
-        {loading && groups.length > 0 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-            <CircularProgress size={24} />
-          </Box>
-        )}
-      </Box>
-    </>
+      {/* Small loader when fetching updates */}
+      {loading && groups.length > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+          <CircularProgress size={24} />
+        </Box>
+      )}
+    </Box>
   )
 }

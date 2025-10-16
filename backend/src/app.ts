@@ -11,10 +11,14 @@ const app = express()
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://192.168.1.4:5173',  
+    ],
     credentials: true,
   })
-)
+);
 
 app.use(express.json())
 app.use(cookieParser())
@@ -22,14 +26,11 @@ app.use(cookieParser())
 // public routes
 app.use('/api/auth', authRoutes)
 
-// protect routes under /api (example)
-// if you want all /api/* to require auth, uncomment below:
-// app.use('/api', requireAuth(), apiRoutes)
-
-// or selectively protect a router:
+// protected routes
 app.use('/api/user', requireAuth(), userRoutes)
 app.use('/api/groups', groupRoutes)
 
-app.get('/health', (_, res) => res.json({ ok: true }))
+app.get('/health', (_req, res) => res.json({ ok: true }))
+
 
 export default app

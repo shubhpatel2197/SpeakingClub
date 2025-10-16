@@ -8,16 +8,46 @@ datasource db {
 }
 
 model User {
-  id         String       @id @default(uuid())
-  email      String       @unique
+  id         String      @id @default(uuid())
+  email      String      @unique
+  password   String?
   name       String?
-  password   String?      // if you keep auth locally
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @default(now())
-
-  ownedGroup Group?       @relation("GroupOwner")
-
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @default(now())
+  ownedGroup Group?      @relation("GroupOwner")
   membership Membership?
+}
+
+model Group {
+  id             String       @id @default(uuid())
+  description    String?
+  language       Language
+  level          Level
+  is_public      Boolean      @default(true)
+  max_members    Int?         @default(2)
+  ownerId        String       @unique
+  rtc_session_id String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  owner          User         @relation("GroupOwner", fields: [ownerId], references: [id])
+  memberships    Membership[]
+
+  @@index([language])
+  @@index([ownerId])
+}
+
+model Membership {
+  id       String   @id @default(uuid())
+  name     String   @default("User")
+  userId   String   @unique
+  groupId  String
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([groupId])
 }
 
 enum Language {
@@ -33,39 +63,4 @@ enum Level {
   INTERMEDIATE
   ADVANCED
   NATIVE
-}
-
-model Group {
-  id            String       @id @default(uuid())
-  description   String?      // optional
-  language      Language
-  level         Level
-  is_public     Boolean      @default(true)
-  max_members   Int?         @default(2)
-  ownerId       String       @unique
-  owner         User         @relation("GroupOwner", fields: [ownerId], references: [id])
-  memberships   Membership[]
-
-  rtc_session_id String?     // ID from your RTC provider (optional)
-  metadata      Json?        // any provider-specific data (SDPs, urls) kept server-side
-
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  @@index([language])
-  @@index([ownerId])
-}
-
-model Membership {
-  id        String   @id @default(uuid())
-  // one membership per user enforced by unique
-  userId    String   @unique
-  groupId   String
-  role      String   @default("member") // "member" | "moderator" | "owner" etc.
-  joinedAt  DateTime @default(now())
-
-  user  User  @relation(fields: [userId], references: [id])
-  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-
-  @@index([groupId])
 }

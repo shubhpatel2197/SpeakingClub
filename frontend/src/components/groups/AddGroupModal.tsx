@@ -14,7 +14,8 @@ import {
   Stack,
 } from "@mui/material";
 import axiosInstance from "../../api/axiosInstance";
-import { useSnackbar } from '../../context/SnackbarProvider'
+import { useSnackbar } from "../../context/SnackbarProvider";
+import { useAuthContext } from '../../context/AuthProvider'
 
 const modalStyle = {
   position: "absolute" as const,
@@ -39,121 +40,130 @@ export default function AddGroupModal({
   open: boolean;
   handleClose: () => void;
 }) {
-    const { showSnackbar } = useSnackbar()
-  const [description, setDescription] = React.useState("");
-    const [language, setLanguage] = React.useState("");
-    const [level, setLevel] = React.useState("");
-    const [maxMembers, setMaxMembers] = React.useState("");
-    const [loading, setLoading] = React.useState(false);
-  
-    const handleCreate = async () => {
-      if (!description || !language || !level) {
-        showSnackbar('Please fill all fields', { severity: 'warning' })
-        return;
-      }
-      setLoading(true);
-      try {
-        const res = await axiosInstance.post("/groups", {
-          description,
-          language,
-          level,
-          max_members: Number(maxMembers),
-        });
-        console.log("Group created:", res.data);
-        showSnackbar('Group created successfully!')
-        handleClose();
-        // reset form
-        setDescription("");
-        setLanguage("");
-        setLevel("");
-        setMaxMembers("");
-      } catch (err: any) {
-        console.error(err);
-        showSnackbar(err?.response?.data?.message || 'Failed to create group', { severity: 'error' })
-      } finally {
-        setLoading(false);
-      }
-    };
+  const {user} = useAuthContext();
+  const { showSnackbar } = useSnackbar();
+  const [description, setDescription] = React.useState("fefes");
+  const [language, setLanguage] = React.useState("GUJARATI");
+  const [level, setLevel] = React.useState("BEGINNER");
+  const [maxMembers, setMaxMembers] = React.useState("3");
+  const [loading, setLoading] = React.useState(false);
 
-  return (<Modal
-        open={open}
-        onClose={handleClose}
-        closeAfterTransition
-        slots={{ backdrop: Backdrop }}
-        slotProps={{ backdrop: { timeout: 300 } }}
-        sx={{ marginBottom: 30 }}
-      >
-        <Fade in={open}>
-          <Box sx={modalStyle}>
-            <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
-              Create a Group
-            </Typography>
+  const handleCreate = async () => {
+    if (!description || !language || !level) {
+      showSnackbar("Please fill all fields", { severity: "warning" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await axiosInstance.post("/groups", {
+        name: user?.name || "1",
+        description,
+        language,
+        level,
+        max_members: Number(maxMembers),
+      });
+    
+      showSnackbar("Group created successfully!");
+      handleClose();
 
-            <TextField
-              label="Description"
-              variant="outlined"
-              rows={3}
-              fullWidth
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
+      const roomUrl = `/room/${res.data.group.id}`;
+      
+      window.open(roomUrl, "_blank", "noopener,noreferrer");
+      setDescription("");
+      setLanguage("");
+      setLevel("");
+      setMaxMembers("");
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.response?.data?.message || "Failed to create group", {
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            <Stack direction="row" spacing={2}>
-              <FormControl fullWidth>
-                <InputLabel>Language</InputLabel>
-                <Select
-                  value={language}
-                  label="Language"
-                  onChange={(e) => setLanguage(e.target.value)}
-                >
-                  <MenuItem value="ENGLISH">English</MenuItem>
-                  <MenuItem value="HINDI">Hindi</MenuItem>
-                  <MenuItem value="GUJARATI">Gujarati</MenuItem>
-                  <MenuItem value="SPANISH">Spanish</MenuItem>
-                  <MenuItem value="FRENCH">French</MenuItem>
-                </Select>
-              </FormControl>
+  return (
+    <Modal
+      open={open}
+      onClose={handleClose}
+      closeAfterTransition
+      slots={{ backdrop: Backdrop }}
+      slotProps={{ backdrop: { timeout: 300 } }}
+      sx={{ marginBottom: 30 }}
+    >
+      <Fade in={open}>
+        <Box sx={modalStyle}>
+          <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
+            Create a Group
+          </Typography>
 
-              <FormControl fullWidth>
-                <InputLabel>No. of people</InputLabel>
-                <Select
-                  value={maxMembers}
-                  label="No. of people"
-                  onChange={(e) => setMaxMembers(e.target.value)}
-                >
-                  {[2].map((n) => (
-                    <MenuItem key={n} value={n}>
-                      {n}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
+          <TextField
+            label="Description"
+            variant="outlined"
+            rows={3}
+            fullWidth
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
 
+          <Stack direction="row" spacing={2}>
             <FormControl fullWidth>
-              <InputLabel>Level</InputLabel>
+              <InputLabel>Language</InputLabel>
               <Select
-                value={level}
-                label="Level"
-                onChange={(e) => setLevel(e.target.value)}
+                value={language}
+                label="Language"
+                onChange={(e) => setLanguage(e.target.value)}
               >
-                <MenuItem value="BEGINNER">Beginner</MenuItem>
-                <MenuItem value="INTERMEDIATE">Intermediate</MenuItem>
-                <MenuItem value="ADVANCED">Advanced</MenuItem>
-                <MenuItem value="NATIVE">Native</MenuItem>
+                <MenuItem value="ENGLISH">English</MenuItem>
+                <MenuItem value="HINDI">Hindi</MenuItem>
+                <MenuItem value="GUJARATI">Gujarati</MenuItem>
+                <MenuItem value="SPANISH">Spanish</MenuItem>
+                <MenuItem value="FRENCH">French</MenuItem>
               </Select>
             </FormControl>
 
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleCreate}
-              disabled={loading}
-              sx={{ mt: 1 }}
+            <FormControl fullWidth>
+              <InputLabel>No. of people</InputLabel>
+              <Select
+                value={maxMembers}
+                label="No. of people"
+                onChange={(e) => setMaxMembers(e.target.value)}
+              >
+                {[2,3,4].map((n) => (
+                  <MenuItem key={n} value={n}>
+                    {n}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+
+          <FormControl fullWidth>
+            <InputLabel>Level</InputLabel>
+            <Select
+              value={level}
+              label="Level"
+              onChange={(e) => setLevel(e.target.value)}
             >
-              {loading ? "Creating..." : "Create"}
-            </Button>
-          </Box>
-        </Fade>
-      </Modal>);
+              <MenuItem value="BEGINNER">Beginner</MenuItem>
+              <MenuItem value="INTERMEDIATE">Intermediate</MenuItem>
+              <MenuItem value="ADVANCED">Advanced</MenuItem>
+              <MenuItem value="NATIVE">Native</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleCreate}
+            disabled={loading}
+            sx={{ mt: 1 }}
+          >
+            {loading ? "Creating..." : "Create"}
+          </Button>
+        </Box>
+      </Fade>
+    </Modal>
+  );
 }

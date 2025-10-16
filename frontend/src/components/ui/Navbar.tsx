@@ -19,7 +19,9 @@ export default function NavBar() {
   }
 
   return (
-    <AppBar position="sticky" color="transparent" elevation={0} sx={{ mb: 3 }}>
+    <AppBar position="sticky" color="transparent" elevation={0} sx={{ display: 'flex', mb: 3, marginLeft: '120px', marginRight:'120px',
+      width:'90%'
+     }}>
       <Toolbar>
         <Typography
           variant="h6"

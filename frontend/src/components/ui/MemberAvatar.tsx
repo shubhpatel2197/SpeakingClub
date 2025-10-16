@@ -4,6 +4,7 @@ import { useTheme } from '@mui/material/styles'
 
 export type Member = {
   id: string
+  name?: string | null
   role?: string
   user?: {
     id: string
@@ -30,8 +31,8 @@ export default function MemberAvatar({
   const theme = useTheme()
 
   // extract from nested user object
-  const user = member?.user
-  const name = user?.name || user?.email || 'User'
+  // const user = member?.user
+  const name = member?.name || 'User'
 
   // derive initials from name
   const initials = name
@@ -41,24 +42,20 @@ export default function MemberAvatar({
     .join('')
     .toUpperCase()
 
-  // deterministic color palette
   const colors = [
-    theme.palette.primary.main,
-    theme.palette.secondary.main,
-    '#E91E63',
-    '#4CAF50',
-    '#FF9800',
-    '#9C27B0',
-    '#0097A7',
-    '#F44336',
-  ]
-
-  // hash user name -> pick consistent color
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  const color = colors[Math.abs(hash) % colors.length]
+    "#1976D2",
+    "#9C27B0",
+    "#E91E63",
+    "#FF9800",
+    "#4CAF50",
+    "#0097A7",
+    "#795548",
+    "#F44336",
+  ];
+  const k = name ?? String(Math.random());
+  let h = 0;
+  for (let i = 0; i < k.length; i++) h = k.charCodeAt(i) + ((h << 5) - h);
+  const color = colors[Math.abs(h) % colors.length];
 
   return (
     <Box
