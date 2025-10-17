@@ -35,9 +35,9 @@ export default function NavBar() {
         <Box sx={{ flex: 1 }} />
 
         {/* color mode toggle (optional) */}
-        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', mr: 1 }}>
+        {/* <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', mr: 1 }}>
           <ColorModeSelect />
-        </Box>
+        </Box> */}
 
         {loading ? (
           <Typography variant="body2">Loading...</Typography>
