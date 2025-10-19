@@ -3,12 +3,13 @@ import { Box, Button, Stack, Typography, CircularProgress } from '@mui/material'
 import { useAuthContext } from '../context/AuthProvider'
 import AddGroupModal from '../components/groups/AddGroupModal'
 import GroupCard from '../components/groups/GroupCard'
-import { useGroups } from '../hooks/useGroups'
+import { useGroups} from '../context/GroupContext'
 
 export default function Home() {
   const { user } = useAuthContext()
-  const { groups, loading, error, refresh } = useGroups()
+  const { groups, loading, refresh } = useGroups();
   const [open, setOpen] = React.useState(false)
+  console.log("Home component groups:", groups);
 
   const handleOpen = () => setOpen(true)
   const handleClose = async () => {
@@ -29,13 +30,13 @@ export default function Home() {
       )
     }
 
-    if (error) {
-      return (
-        <Typography color="error" sx={{ textAlign: 'center', py: 4 }}>
-          Failed to load groups
-        </Typography>
-      )
-    }
+    // if (error) {
+    //   return (
+    //     <Typography color="error" sx={{ textAlign: 'center', py: 4 }}>
+    //       Failed to load groups
+    //     </Typography>
+    //   )
+    // }
 
     if (groups.length === 0) {
       return (
@@ -70,9 +71,9 @@ export default function Home() {
           py: 2,
         }}
       >
-        <Typography variant="h5" fontWeight={600}>
+        {/* <Typography variant="h5" fontWeight={600}>
           Groups
-        </Typography>
+        </Typography> */}
 
         <Button
           variant="contained"

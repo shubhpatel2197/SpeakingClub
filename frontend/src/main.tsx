@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthProvider'
 import { ColorModeProvider } from './context/ColorModeContext'
 import { SnackbarProvider } from './context/SnackbarProvider'
+import { GroupsProvider } from './context/GroupContext'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   // <React.StrictMode>
@@ -12,9 +13,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
       <SnackbarProvider>
         <AuthProvider>
-          
+          <GroupsProvider>
           <App />
-          
+          </GroupsProvider>
         </AuthProvider>
         </SnackbarProvider>
       </BrowserRouter>

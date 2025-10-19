@@ -1,9 +1,13 @@
 // backend/src/controllers/groups.ts
-import { Request, Response } from 'express'
-import prisma from '../lib/prisma'
-import { Prisma } from '@prisma/client'
-import { deleteGroupById } from '../services/groupService'
-import { io } from '../index'
+import { Request, Response } from "express";
+import prisma from "../lib/prisma";
+import { Prisma } from "@prisma/client";
+import {
+  removeUserFromGroup,
+  joinGroupCore,
+  deleteGroupById,
+} from "../services/groupService";
+import { io } from "../index";
 
 /**
  * Create a group.
@@ -14,26 +18,26 @@ import { io } from '../index'
  */
 
 export async function createGroup(req: Request, res: Response) {
-  const userId = req.user?.id
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+  console.log("Create group called");
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-  const { description, language, level, max_members, name } = req.body
+  const { description, language, level, max_members, name } = req.body;
 
-  // check if user is already member of a group
+  // still enforce: cannot create if already member or already own one
   const existingMembership = await prisma.membership.findUnique({
-    where: { userId }
-  })
+    where: { userId },
+  });
   if (existingMembership) {
-    return res.status(403).json({ error: 'Cannot create a group while a member of another group' })
+    return res
+      .status(403)
+      .json({ error: "Cannot create a group while a member of another group" });
   }
-
-  // check if user already owns a group
   const existingOwn = await prisma.group.findUnique({
-    where: { ownerId: userId }
-  })
-  if (existingOwn) {
-    return res.status(403).json({ error: 'You already own a group' })
-  }
+    where: { ownerId: userId },
+  });
+  if (existingOwn)
+    return res.status(403).json({ error: "You already own a group" });
 
   try {
     const group = await prisma.group.create({
@@ -43,25 +47,23 @@ export async function createGroup(req: Request, res: Response) {
         level,
         max_members,
         owner: { connect: { id: userId } },
-        memberships: {
-          create: {
-            name: name || "2",
-            user: { connect: { id: userId } },
-            role: 'owner',
-          }
-        }
       },
-      include: { memberships: true }
-    })
-    io.to('groups').emit('groups:upsert', { group }) 
-    return res.status(201).json({ group })
+      include: { memberships: true },
+    });
+    // emit once more if you want, but joinGroupCore already emitted upsert
+    // io.to('groups').emit('groups:upsert', { group: result })
+
+    return res.status(201).json({ group: group });
   } catch (err: any) {
-    console.error(err)
-    // Catch unique constraint errors etc.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return res.status(409).json({ error: 'Unique constraint failed' })
+    console.error(err);
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      return res.status(409).json({ error: "Unique constraint failed" });
     }
-    return res.status(500).json({ error: 'Internal server error' })
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -69,36 +71,35 @@ export async function createGroup(req: Request, res: Response) {
  * List public groups with optional filters
  */
 export async function listGroups(req: Request, res: Response) {
-  const { language, level, take = 20, cursor } = req.query
-  const where: any = { is_public: true }
-  if (language) where.language = String(language)
-  if (level) where.level = String(level)
+  const { language, level, take = 20, cursor } = req.query;
+  const where: any = { is_public: true };
+  if (language) where.language = String(language);
+  if (level) where.level = String(level);
 
   const groups = await prisma.group.findMany({
-  include: {
-    owner: {
-      select: {
-        id: true,
-        name: true,
-        email: true,
+    include: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
       },
-    },
-    memberships: {
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+      memberships: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
       },
     },
-  },
-})
+  });
 
-
-  res.json({ groups })
+  res.json({ groups });
 }
 
 /**
@@ -109,47 +110,28 @@ export async function listGroups(req: Request, res: Response) {
  * - group must exist and not exceed max_members (if set)
  */
 export async function joinGroup(req: Request, res: Response) {
-  const userId = req.user?.id
-  const groupId = req.params.id
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' })
-
-  // check ownership
-  const own = await prisma.group.findUnique({ where: { ownerId: userId } })
-  if (own) {
-    return res.status(403).json({ error: 'Cannot join a group while owning one' })
-  }
-
-  // check existing membership
-  const existingMembership = await prisma.membership.findUnique({ where: { userId } })
-  if (existingMembership) {
-    return res.status(409).json({ error: 'Already a member of a group' })
-  }
-
-  const group = await prisma.group.findUnique({ where: { id: groupId }, include: { memberships: true } })
-  if (!group) return res.status(404).json({ error: 'Group not found' })
-
-  if (group.max_members && group.memberships.length >= group.max_members) {
-    return res.status(403).json({ error: 'Group is full' })
-  }
+  console.log("Join group called", req.params.id);
+  const userId = req.user?.id;
+  const groupId = req.params.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    const membership = await prisma.membership.create({
-      data: {
-        name: req.user.name || "User",
-        user: { connect: { id: userId } },
-        group: { connect: { id: groupId } },
-        role: 'member'
-      }
-    })
-    const group = await prisma.group.findUnique({ where: { id: groupId }, include: { memberships: true } })
-    io.to('groups').emit('groups:upsert', { group: group })
-    return res.json({ membership })
+    const { membership } = await joinGroupCore(prisma, {
+      userId,
+      groupId,
+      name: req.user?.name || "User",
+    });
+    return res.json({ membership });
   } catch (err: any) {
-    console.error(err)
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return res.status(409).json({ error: 'Already a member' })
+    console.error(err);
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      return res.status(409).json({ error: "Already a member" });
     }
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -157,45 +139,43 @@ export async function joinGroup(req: Request, res: Response) {
  * Leave a group
  */
 export async function leaveGroup(req: Request, res: Response) {
-  const userId = req.user?.id
-  const groupId = req.params.roomId
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+  const userId = req.user?.id;
+  const groupId = req.params.roomId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-  const membership = await prisma.membership.findUnique({ where: { userId } })
-  if (!membership || membership.groupId !== groupId) {
-    return res.status(404).json({ error: 'Membership not found for this group' })
-  }
-
-  // prevent owner from leaving (owner should delete group or transfer ownership)
-  const group = await prisma.group.findUnique({ where: { id: groupId } })
-  if (group?.ownerId === userId) {
-    await deleteGroupById(groupId, userId)
-  }
-
-  await prisma.membership.delete({ where: { id: membership.id } })
-  const groupUpdated = await prisma.group.findUnique({ where: { id: groupId }, include: { memberships: true } })
-  io.to('groups').emit('groups:upsert', { group: groupUpdated })
-  return res.json({ ok: true })
+  removeUserFromGroup(userId, groupId)
+    .then(() => {
+      return res.json({ ok: true });
+    })
+    .catch((error: any) => {
+      console.error(error);
+      if (error.message === "Group not found") {
+        return res.status(404).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    });
 }
-
 
 export async function deleteGroup(req: Request, res: Response) {
-  const userId = req.user?.id
-  const groupId = req.params.id
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+  const userId = req.user?.id;
+  const groupId = req.params.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    const result = await deleteGroupById(groupId, userId)
-    io.to('groups').emit('groups:remove', { id: groupId })
-    return res.json(result)
+    const result = await deleteGroupById(groupId, userId);
+    io.to("groups").emit("groups:remove", { id: groupId });
+    return res.json({ ok: true });
   } catch (error: any) {
-    console.error(error)
-    if (error.message === 'Group not found') {
-      return res.status(404).json({ error: error.message })
+    
+    if (error.message === "Group not found") {
+      return res.status(404).json({ error: error.message });
     }
-    if (error.message.includes('Only the owner')) {
-      return res.status(403).json({ error: error.message })
+    if (error.message.includes("Only the owner")) {
+      return res.status(403).json({ error: error.message });
     }
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
+
+
+

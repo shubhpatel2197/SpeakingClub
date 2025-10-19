@@ -1,188 +1,223 @@
-// frontend/src/hooks/useGroups.ts
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import axiosInstance from '../api/axiosInstance'
-import { io, Socket } from 'socket.io-client'
+// // frontend/src/hooks/useGroups.ts
+// import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// import axiosInstance from "../api/axiosInstance";
+// import { io, Socket } from "socket.io-client";
+// import { useAuthContext } from "../context/AuthProvider";
 
-export type Member = {
-  id: string
-  name?: string | null
-  email?: string
-}
+// export type Member = {
+//   id: string;
+//   name?: string | null;
+//   email?: string;
+// };
 
-export type Group = {
-  id: string
-  description?: string | null
-  language: string
-  level: string
-  max_members?: number | null
-  owner?: { id: string; name?: string | null; email?: string | null }
-  memberships?: Member[]
-  _count?: { memberships?: number }
-  updatedAt?: string
-}
+// export type Group = {
+//   id: string;
+//   description?: string | null;
+//   language: string;
+//   level: string;
+//   max_members?: number | null;
+//   owner?: { id: string; name?: string | null; email?: string | null };
+//   memberships?: Member[];
+//   _count?: { memberships?: number };
+//   updatedAt?: string;
+// };
 
-type UseGroupsReturn = {
-  groups: Group[]
-  loading: boolean
-  error: Error | null
-  refresh: () => Promise<void>
-  loadMore: () => Promise<void>
-  hasMore: boolean
-}
+// type UseGroupsReturn = {
+//   groups: Group[];
+//   loading: boolean;
+//   error: Error | null;
+//   refresh: () => Promise<void>;
+//   loadMore: () => Promise<void>;
+//   hasMore: boolean;
+//   ispresent: boolean;
+// };
 
-const SOCKET_PATH = '/socket.io' // same as backend
-const SOCKET_URL = 'http://localhost:4000' // empty => same origin. Set to 'http://localhost:4000' if backend is separate in dev.
+// const SOCKET_PATH = "/socket.io"; // same as backend
+// const SOCKET_URL = "http://localhost:4000"; // empty => same origin. Set to 'http://localhost:4000' if backend is separate in dev.
 
-export function useGroups(initialTake = 20): UseGroupsReturn {
-  const [groups, setGroups] = useState<Group[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [hasMore, setHasMore] = useState(true)
+// export function useGroups(initialTake = 20): UseGroupsReturn {
+//   const { user } = useAuthContext();
 
-  const mountedRef = useRef(true)
-  const socketRef = useRef<Socket | null>(null)
-  const take = initialTake
+//   const [groups, setGroups] = useState<Group[]>([]);
+//   const [loading, setLoading] = useState(false);
+//   const [error, setError] = useState<Error | null>(null);
+//   const [cursor, setCursor] = useState<string | null>(null);
+//   const [hasMore, setHasMore] = useState(true);
+//   const [ispresent, setPresent] = useState(false)
 
-  // merge helper: upsert by id, keep most recent first based on updatedAt if available
-  const upsertGroup = useCallback((g: Group) => {
-    setGroups(prev => {
-      const idx = prev.findIndex(x => x.id === g.id)
-      if (idx === -1) {
-        // add to top
-        const next = [g, ...prev]
-        return sortMaybe(next)
-      } else {
-        const next = [...prev]
-        // shallow merge (keep any fields from server)
-        next[idx] = { ...next[idx], ...g }
-        return sortMaybe(next)
-      }
-    })
-  }, [])
+//   const mountedRef = useRef(true);
+//   const socketRef = useRef<Socket | null>(null);
+//   const take = initialTake;
 
-  // remove helper
-  const removeGroup = useCallback((id: string) => {
-    setGroups(prev => prev.filter(g => g.id !== id))
-  }, [])
+//   useEffect(() => {
+//     const userId = user?.id;
+//     if (!userId || !Array.isArray(groups) || groups.length === 0) {
+//       setPresent(false);
+//       return;
+//     }
 
-  // optional sort by updatedAt desc if present
-  const sortMaybe = useCallback((list: Group[]) => {
-    const hasUpdatedAt = list.some(g => !!g.updatedAt)
-    if (!hasUpdatedAt) return list
-    return [...list].sort((a, b) => {
-      const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0
-      const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0
-      return tb - ta
-    })
-  }, [])
+//     let found = false;
+//     for (const g of groups) {
+//       const list = g.memberships || [];
+//       for (const m of list) {
+//         const mid =
+//           // common shapes your code uses
+//           (m as any).user?.id ?? (m as any).userId ?? (m as any).id;
 
-  const fetchPage = useCallback(
-    async (opts?: { reset?: boolean }) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const params: any = { take }
-        if (!opts?.reset && cursor) params.cursor = cursor
-        const res = await axiosInstance.get('/groups', { params, withCredentials: true })
-        const data: { groups: Group[] } = res.data
+//         if (mid && mid === userId) {
+//           found = true;
+//           break;
+//         }
+//       }
+//       if (found) break;
+//     }
 
-        if (opts?.reset) {
-          setGroups(sortMaybe(data.groups))
-        } else {
-          setGroups(prev => {
-            const ids = new Set(prev.map(g => g.id))
-            const appended = data.groups.filter(g => !ids.has(g.id))
-            return sortMaybe(prev.concat(appended))
-          })
-        }
+//     setPresent(found);
+//   }, [groups, user?.id]);
 
-        if (data.groups.length < take) {
-          setHasMore(false)
-        } else {
-          const last = data.groups[data.groups.length - 1]
-          setCursor(last?.id ?? null)
-          setHasMore(Boolean(last))
-        }
-      } catch (err: any) {
-        setError(err)
-      } finally {
-        if (mountedRef.current) setLoading(false)
-      }
-    },
-    [cursor, take, sortMaybe]
-  )
+//   // merge helper: upsert by id, keep most recent first based on updatedAt if available
+//   const upsertGroup = useCallback((g: Group) => {
+//     setGroups((prev) => {
+//       const idx = prev.findIndex((x) => x.id === g.id);
+//       if (idx === -1) {
+//         // add to top
+//         const next = [g, ...prev];
+//         return sortMaybe(next);
+//       } else {
+//         const next = [...prev];
+//         // shallow merge (keep any fields from server)
+//         next[idx] = { ...next[idx], ...g };
+//         return sortMaybe(next);
+//       }
+//     });
+//   }, []);
 
-  // initial load
-  useEffect(() => {
-    mountedRef.current = true
-    setCursor(null)
-    setHasMore(true)
-    fetchPage({ reset: true })
-    return () => {
-      mountedRef.current = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+//   // remove helper
+//   const removeGroup = useCallback((id: string) => {
+//     setGroups((prev) => prev.filter((g) => g.id !== id));
+//   }, []);
 
-  // socket wiring
-  useEffect(() => {
-    // open socket (shares the same auth cookie)
-    const socket = io(SOCKET_URL, {
-      path: SOCKET_PATH,
-      transports: ['websocket'],
-      withCredentials: true,
-    })
-    socketRef.current = socket
+//   // optional sort by updatedAt desc if present
+//   const sortMaybe = useCallback((list: Group[]) => {
+//     const hasUpdatedAt = list.some((g) => !!g.updatedAt);
+//     if (!hasUpdatedAt) return list;
+//     return [...list].sort((a, b) => {
+//       const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+//       const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+//       return tb - ta;
+//     });
+//   }, []);
 
-    socket.on('connect', () => {
-      // subscribe to global groups channel
-      socket.emit('groups:subscribe')
-    })
+//   const fetchPage = useCallback(
+//     async (opts?: { reset?: boolean }) => {
+//       setLoading(true);
+//       setError(null);
+//       try {
+//         const params: any = { take };
+//         if (!opts?.reset && cursor) params.cursor = cursor;
+//         const res = await axiosInstance.get("/groups", {
+//           params,
+//           withCredentials: true,
+//         });
+//         const data: { groups: Group[] } = res.data;
 
-    // ask clients to refresh list (simple & consistent)
-    socket.on('groups:refresh', () => {
-      // reset pagination and refetch first page
-      setCursor(null)
-      setHasMore(true)
-      fetchPage({ reset: true })
-    })
+//         if (opts?.reset) {
+//           setGroups(sortMaybe(data.groups));
+//         } else {
+//           setGroups((prev) => {
+//             const ids = new Set(prev.map((g) => g.id));
+//             const appended = data.groups.filter((g) => !ids.has(g.id));
+//             return sortMaybe(prev.concat(appended));
+//           });
+//         }
 
-    // upsert a single group (create/update)
-    socket.on('groups:upsert', ({ group }: { group: Group }) => {
-      console.log('groups:upsert', group)
-      if (group) upsertGroup(group)
-    })
+//         if (data.groups.length < take) {
+//           setHasMore(false);
+//         } else {
+//           const last = data.groups[data.groups.length - 1];
+//           setCursor(last?.id ?? null);
+//           setHasMore(Boolean(last));
+//         }
+//       } catch (err: any) {
+//         setError(err);
+//       } finally {
+//         if (mountedRef.current) setLoading(false);
+//       }
+//     },
+//     [cursor, take, sortMaybe]
+//   );
 
-    // remove a group (deleted)
-    socket.on('groups:remove', ({ id }: { id: string }) => {
-      console.log('groups:remove', id)
-      if (id) removeGroup(id)
-    })
+//   // initial load
+//   useEffect(() => {
+//     mountedRef.current = true;
+//     setCursor(null);
+//     setHasMore(true);
+//     fetchPage({ reset: true });
+//     return () => {
+//       mountedRef.current = false;
+//     };
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, []);
 
-    socket.on('disconnect', () => {
-      // no-op; optional: backoff reconnect handling here
-    })
+//   // socket wiring
+//   useEffect(() => {
+//     // open socket (shares the same auth cookie)
+//     const socket = io("/", {
+//       path: "/socket.io",
+//       transports: ["websocket"],
+//       withCredentials: true,
+//       timeout: 20000,
+//     });
+//     socketRef.current = socket;
 
-    return () => {
-      try {
-        socket.emit('groups:unsubscribe')
-        socket.disconnect()
-      } catch {}
-      socketRef.current = null
-    }
-  }, [fetchPage, removeGroup, upsertGroup])
+//     socket.on("connect", () => {
+//       console.log("[SOCKET] group connected", socket.id);
+//       socket.emit("groups:subscribe");
+//     });
 
-  const refresh = useCallback(async () => {
-    setCursor(null)
-    setHasMore(true)
-    await fetchPage({ reset: true })
-  }, [fetchPage])
+//     // ask clients to refresh list (simple & consistent)
+//     socket.on("groups:refresh", () => {
+//       // reset pagination and refetch first page
+//       setCursor(null);
+//       setHasMore(true);
+//       fetchPage({ reset: true });
+//     });
 
-  const loadMore = useCallback(async () => {
-    if (!hasMore) return
-    await fetchPage()
-  }, [fetchPage, hasMore])
+//     // upsert a single group (create/update)
+//     socket.on("groups:upsert", ({ group }: { group: Group }) => {
+//       console.log("groups:upsert", group);
+//       if (group) upsertGroup(group);
+//     });
 
-  return { groups, loading, error, refresh, loadMore, hasMore }
-}
+//     // remove a group (deleted)
+//     socket.on("groups:remove", ({ id }: { id: string }) => {
+//       console.log("groups:remove", id);
+//       if (id) removeGroup(id);
+//     });
+
+//     socket.on("disconnect", () => {
+//       // no-op; optional: backoff reconnect handling here
+//     });
+
+//     return () => {
+//       try {
+//         socket.emit("groups:unsubscribe");
+//         socket.disconnect();
+//       } catch {}
+//       socketRef.current = null;
+//     };
+//   }, [fetchPage, removeGroup, upsertGroup]);
+
+//   const refresh = useCallback(async () => {
+//     setCursor(null);
+//     setHasMore(true);
+//     await fetchPage({ reset: true });
+//   }, [fetchPage]);
+
+//   const loadMore = useCallback(async () => {
+//     if (!hasMore) return;
+//     await fetchPage();
+//   }, [fetchPage, hasMore]);
+
+//   return { groups, loading, error, refresh, loadMore, hasMore, ispresent};
+// }

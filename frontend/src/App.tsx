@@ -6,6 +6,7 @@ import './App.css'
 import { useAuthContext } from './context/AuthProvider'
 import Home from './pages/Home'
 import NavBar from './components/ui/Navbar'
+import { RoomRouteWrapper } from './wrapper/RoomRouterWrapper'
 
 // lazy load Room to reduce initial bundle
 const Room = React.lazy(() => import('./pages/Room'))
@@ -70,7 +71,7 @@ function App() {
             element={
               <ProtectedRoute>
                 <Suspense fallback={<div>Loading room...</div>}>
-                  <Room />
+                   <RoomRouteWrapper />
                 </Suspense>
               </ProtectedRoute>
             }

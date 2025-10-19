@@ -3,7 +3,7 @@ import { Server as IOServer, Socket } from 'socket.io'
 import { parse as parseCookie } from 'cookie'
 import jwt from 'jsonwebtoken'
 import { getOrCreateRoom, getRoom, transportToRoom } from './mediasoup/roomManager'
-import { removeUserFromGroup } from './services/groupService'
+import { removeUserFromGroup, joinGroupCore } from './services/groupService'
 import prisma from './lib/prisma'
 
 type JwtPayload = {
@@ -117,7 +117,14 @@ export function attachSocketServer(io: IOServer) {
           name: (u as AuthedUser).name ?? (u as AuthedUser).email ?? socket.id,
         })
 
-        // update group list (member count) for everyone subscribed to 'groups'
+        await joinGroupCore(prisma, {
+          userId: socket.data.user!.id,
+          groupId: roomId,
+          name: socket.data.user!.name || "User",
+        }).catch((e) => {
+          console.error('Error adding user to group on joinRoom:', e)
+          cb?.({ error: 'Failed to join group' })
+        })
 
         cb?.({ ok: true })
         console.log('[SRV] joinRoom ok', { roomId, sid: socket.id })
@@ -299,6 +306,7 @@ export function attachSocketServer(io: IOServer) {
   })
 
   async function cleanupPeer(socket: AuthedSocket, io: IOServer) {
+    console.log('[SRV] cleanupPeer', socket.id)
     const roomId = socket.data.roomId
     if (!roomId) return
     const room = getRoom(roomId)

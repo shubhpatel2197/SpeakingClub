@@ -20,7 +20,8 @@ import VideoArea from "../components/room/VideoArea";
 import { useAuthContext } from "../context/AuthProvider";
 import { useMediasoup } from "../hooks/useMediasoup";
 import { useNavigate, useParams } from "react-router-dom";
-import { useGroups } from "../hooks/useGroups";
+import { useCurrentGroup } from "../context/CurrentGroupContext";
+import { useSnackbar } from "../context/SnackbarProvider";
 
 const RoomContainer = styled(Box)(({ theme }) => ({
   display: "flex",
@@ -114,39 +115,40 @@ function deterministicColor(name?: string) {
 }
 
 export default function Room() {
+  const {showSnackbar} = useSnackbar();
   const navigate = useNavigate();
-  const { groups } = useGroups();
   const { id: roomId } = useParams<{ id: string }>();
   const { user } = useAuthContext();
-  const { refresh } = useGroups();
   const { joinRoom, leaveRoom, toggleMic, micOn, participants: rtcParticipants } =
     useMediasoup();
+  const group = useCurrentGroup();
 
-  const group = useMemo(() => {
-    if (!roomId || !groups) return undefined;
-    return groups.find((g: any) => g.id === roomId);
-  }, [groups, roomId]);
+  console.log("Room component render, group:", group);
 
-  const backendMembers: RoomParticipant[] = useMemo(() => {
-    if (!group) return [];
-    if (Array.isArray(group.memberships) && group.memberships.length > 0) {
-      return group.memberships.map((m: any) => {
-        if (m?.user) return { id: m.user.id, name: m.user.name ?? m.user.email };
-        if (m?.id && (m?.name || m?.email)) return { id: m.id, name: m.name ?? m.email };
-        return { id: m?.id ?? String(m), name: m?.name ?? m?.email ?? String(m) };
-      });
-    }
-    return [];
-  }, [group]);
+  // const backendMembers: RoomParticipant[] = useMemo(() => {
+  //   if (!group) return [];
+  //   if (Array.isArray(group.memberships) && group.memberships.length > 0) {
+  //     return group.memberships.map((m: any) => {
+  //       if (m?.user) return { id: m.user.id, name: m.user.name ?? m.user.email };
+  //       if (m?.id && (m?.name || m?.email)) return { id: m.id, name: m.name ?? m.email };
+  //       return { id: m?.id ?? String(m), name: m?.name ?? m?.email ?? String(m) };
+  //     });
+  //   }
+  //   return [];
+  // }, [group, rtcParticipants]);
 
   const membersCount = useMemo(() => {
+    console.log("membersCount calc for group:", group);
     if (!group) return 0;
     if (typeof group._count === "object" && typeof group._count.memberships === "number") {
       return group._count.memberships;
     }
     if (Array.isArray(group.memberships)) return group.memberships.length;
+    if(rtcParticipants){
+      return rtcParticipants.length;
+    }
     return 0;
-  }, [group]);
+  }, [group, rtcParticipants]);
 
   const [displayMembers, setDisplayMembers] = useState<RoomParticipant[]>([]);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
@@ -155,7 +157,7 @@ export default function Room() {
 
   useEffect(() => {
     const map = new Map<string, RoomParticipant>();
-    backendMembers.forEach((m) => map.set(m.id, { ...m }));
+    // backendMembers.forEach((m) => map.set(m.id, { ...m }));
     rtcParticipants.forEach((p: any) => {
       const prev = map.get(p.id);
       map.set(p.id, {
@@ -168,34 +170,37 @@ export default function Room() {
       map.set(user.id, { id: user.id, name: user.name ?? user.email ?? "You" });
     }
     setDisplayMembers(Array.from(map.values()));
-  }, [backendMembers, rtcParticipants, user?.id, user?.name, user?.email]);
+  }, [rtcParticipants, user?.id, user?.name, user?.email]);
 
   useEffect(() => {
     if (!roomId) return;
+    console.log("use effect joining room", group);
+    const membersList = group?.memberships || [];
+    const isMember = membersList.some((m: any) => {
+      const mid =
+        // common shapes your code uses
+        (m as any).user?.id ?? (m as any).userId ?? (m as any).id;
+      return mid && mid === user?.id;
+    });
+    if (isMember) {
+      navigate("/", { replace: true });
+      // showSnackbar("You are already a member of group");
+      return;
+    }
     joinRoom(roomId);
+
     return () => {
-      leaveRoom();
+      console.log("use effect cleanup leaving room", roomId);
     };
-  }, [roomId, joinRoom, leaveRoom]);
+  }, [roomId, joinRoom]);
 
   const handleLeaveClick = async () => {
-    if (isOwner) {
-      // owners see the confirmation backdrop
       setConfirmLeaveOpen(true);
-    } else {
-      // non-owners leave immediately
-      leaveRoom();
-      await refresh();
-      navigate("/");
-    }
   };
 
   const confirmLeave = async () => {
-    // Here you could also hit an API to close the group for everyone if that's your rule.
-    // For now we just leave the mediasoup room and navigate away.
     leaveRoom();
     setConfirmLeaveOpen(false);
-    await refresh();
     navigate("/");
   };
 
@@ -254,10 +259,10 @@ export default function Room() {
 
         <MembersScroll sx={{ flex: 1 }}>
           {displayMembers.map((p) => {
+
             const isCurrent = p.id === currentUserId;
             const displayName = p.name ?? p.id;
             const showMicOn = isCurrent ? micOn : p.muted === undefined ? true : !p.muted;
-
             return (
               <MemberItem key={p.id}>
                 <Avatar

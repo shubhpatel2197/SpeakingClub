@@ -42,7 +42,7 @@ export default function AddGroupModal({
 }) {
   const {user} = useAuthContext();
   const { showSnackbar } = useSnackbar();
-  const [description, setDescription] = React.useState("fefes");
+  const [description, setDescription] = React.useState("Anything");
   const [language, setLanguage] = React.useState("GUJARATI");
   const [level, setLevel] = React.useState("BEGINNER");
   const [maxMembers, setMaxMembers] = React.useState("3");
@@ -69,10 +69,10 @@ export default function AddGroupModal({
       const roomUrl = `/room/${res.data.group.id}`;
       
       window.open(roomUrl, "_blank", "noopener,noreferrer");
-      setDescription("");
-      setLanguage("");
-      setLevel("");
-      setMaxMembers("");
+      // setDescription("");
+      // setLanguage("");
+      // setLevel("");
+      // setMaxMembers("");
     } catch (err: any) {
       console.error(err);
       showSnackbar(err?.response?.data?.message || "Failed to create group", {

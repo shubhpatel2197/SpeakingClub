@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Device } from 'mediasoup-client'
 import { io, Socket } from 'socket.io-client'
 import { useSnackbar } from '../context/SnackbarProvider'
+import { useNavigate } from 'react-router-dom'
 
 type SendTransport = ReturnType<Device['createSendTransport']>
 type RecvTransport = ReturnType<Device['createRecvTransport']>
@@ -20,10 +21,11 @@ type Participant = {
 const SIGNALING_BASE =
   window.location.hostname === 'localhost'
     ? 'http://localhost:4000'
-    : `http://app.local:8443` 
+    : `http://app.local:8443`
 
 export function useMediasoup() {
   const { showSnackbar } = useSnackbar()
+  const navigate = useNavigate()
 
   const socketRef = useRef<Socket | null>(null)
   const myPeerIdRef = useRef<string | null>(null)
@@ -37,7 +39,7 @@ export function useMediasoup() {
   const localStreamRef = useRef<MediaStream | null>(null)
 
   const [participants, setParticipants] = useState<Participant[]>([])
-  const [micOn, setMicOn] = useState(false)
+  const [micOn, setMicOn] = useState(false)      // start muted
   const [producing, setProducing] = useState(false)
 
   const peersRef = useRef<Record<string, Participant>>({})
@@ -49,13 +51,11 @@ export function useMediasoup() {
 
   function emitPresence() {
     const list = Object.values(peersRef.current)
-    console.log('[CL/PRESENCE] ->', list)
     setParticipants(list)
   }
 
   const attachConsumerTrack = useCallback((consumer: Consumer, key: string) => {
     try {
-      console.log('[CL/ATTACH] key=', key, 'consumerId=', consumer?.id)
       const ms = new MediaStream()
       ms.addTrack(consumer.track)
 
@@ -72,99 +72,64 @@ export function useMediasoup() {
       // @ts-ignore
       audio.srcObject = ms
 
-      audio
-        .play()
-        .then(() => console.log('[CL/ATTACH] audio.play() ok for', key))
-        .catch((err) => {
-          console.warn('[CL/ATTACH] autoplay blocked, showing button', err)
-          const btn = document.createElement('button')
-          btn.textContent = 'Enable audio'
-          Object.assign(btn.style, {
-            position: 'fixed',
-            right: '16px',
-            bottom: '16px',
-            zIndex: '9999',
-            padding: '8px 12px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-          })
-          btn.onclick = async () => {
-            try {
-              await audio.play()
-              btn.remove()
-            } catch (e) {
-              console.error('Manual audio.play() still blocked', e)
-            }
-          }
-          document.body.appendChild(btn)
+      audio.play().catch(() => {
+        const btn = document.createElement('button')
+        btn.textContent = 'Enable audio'
+        Object.assign(btn.style, {
+          position: 'fixed',
+          right: '16px',
+          bottom: '16px',
+          zIndex: '9999',
+          padding: '8px 12px',
+          borderRadius: '8px',
+          cursor: 'pointer',
         })
+        btn.onclick = async () => {
+          try { await audio.play(); btn.remove() } catch {}
+        }
+        document.body.appendChild(btn)
+      })
     } catch (err) {
       console.error('[CL/ATTACH] error', err)
     }
   }, [])
 
   const cleanupPeerConsumer = useCallback((producerId: string) => {
-    console.log('[CL/CLEAN] producerId=', producerId)
     for (const [cid, consumer] of Object.entries(consumersRef.current)) {
       if ((consumer as any).producerId === producerId) {
-        try {
-          (consumer as any).close()
-        } catch {}
+        try { (consumer as any).close() } catch {}
         delete consumersRef.current[cid]
       }
     }
     const audio = audioElsRef.current[producerId]
     if (audio) {
-      try {
-        audio.parentNode?.removeChild(audio)
-      } catch {}
+      try { audio.parentNode?.removeChild(audio) } catch {}
       delete audioElsRef.current[producerId]
     }
   }, [])
 
   const cleanupAll = useCallback(() => {
-    console.log('[CL/CLEAN ALL] begin')
-    try {
-      localStreamRef.current?.getTracks().forEach((t) => t.stop())
-    } catch {}
+    try { localStreamRef.current?.getTracks().forEach((t) => t.stop()) } catch {}
     localStreamRef.current = null
 
-    Object.values(producersRef.current).forEach((p) => {
-      try {
-        ;(p as any).close()
-      } catch {}
-    })
+    Object.values(producersRef.current).forEach((p) => { try { (p as any).close() } catch {} })
     producersRef.current = {}
 
-    Object.values(consumersRef.current).forEach((c) => {
-      try {
-        ;(c as any).close()
-      } catch {}
-    })
+    Object.values(consumersRef.current).forEach((c) => { try { (c as any).close() } catch {} })
     consumersRef.current = {}
 
-    Object.values(audioElsRef.current).forEach((el) => {
-      try {
-        el.parentNode?.removeChild(el)
-      } catch {}
-    })
+    Object.values(audioElsRef.current).forEach((el) => { try { el.parentNode?.removeChild(el) } catch {} })
     audioElsRef.current = {}
 
-    try {
-      sendTransportRef.current?.close()
-    } catch {}
+    try { sendTransportRef.current?.close() } catch {}
     sendTransportRef.current = null
 
-    try {
-      recvTransportRef.current?.close()
-    } catch {}
+    try { recvTransportRef.current?.close() } catch {}
     recvTransportRef.current = null
 
     deviceRef.current = null
 
-    try {
-      socketRef.current?.disconnect()
-    } catch {}
+    try { socketRef.current?.disconnect() } catch {}
     socketRef.current = null
 
     myPeerIdRef.current = null
@@ -172,44 +137,26 @@ export function useMediasoup() {
     pendingProducersRef.current = []
 
     setParticipants([])
-    setMicOn(false)
+    setMicOn(false)          // reset to muted
     setProducing(false)
-    console.log('[CL/CLEAN ALL] done')
   }, [])
 
   /** consume a single remote producer (if not self), ensuring recv transport exists */
   const consumeProducer = useCallback(
     async (socket: Socket, producerId: string) => {
-      const myPeerId = myPeerIdRef.current
-      // find owner of this producer from presence if we have it
-      const ownerPeer = Object.values(peersRef.current).find((p) =>
-        Object.values(consumersRef.current).some((c: any) => c?.producerId === producerId)
-      )
-      // Client-side self-filter uses the server-provided peerId when enqueuing (see handlers below),
-      // but we also guard on the final consume call if needed.
-
-      // Ensure recv transport created & connected
       if (!recvTransportRef.current) {
-        console.log('[CL/RECV] creating recv transport…')
         const tpParams = await new Promise<any>((resolve, reject) => {
           socket.emit('createWebRtcTransport', { roomId: currentRoomIdRef.current, direction: 'recv' }, (res: any) => {
             if (res?.error) return reject(res.error)
             resolve(res)
           })
         })
-        if (!deviceRef.current) {
-          console.warn('[CL/RECV] device not ready; abort consume')
-          return
-        }
+        if (!deviceRef.current) return
         const recvTransport: RecvTransport = (deviceRef.current as any).createRecvTransport(tpParams)
         recvTransportRef.current = recvTransport
         recvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
           socket.emit('connectTransport', { transportId: recvTransport.id, dtlsParameters }, (res: any) => {
-            if (res?.error) {
-              console.error('[CL/RECV] connect error', res.error)
-              return errback(res.error)
-            }
-            console.log('[CL/RECV] connected')
+            if (res?.error) return errback(res.error)
             callback()
           })
         })
@@ -235,10 +182,7 @@ export function useMediasoup() {
       consumersRef.current[consumer.id] = consumer
       attachConsumerTrack(consumer, consumer.producerId)
 
-      // server also resumes, but ok to request:
       socket.emit('consumerResume', { consumerId: consumer.id })
-
-      console.log('[CL/CONSUME] ok consumerId=', consumer.id, 'for producer=', producerId)
     },
     [attachConsumerTrack]
   )
@@ -246,29 +190,19 @@ export function useMediasoup() {
   /** After device ready, process all buffered producers */
   const flushPendingProducers = useCallback(async () => {
     const socket = socketRef.current
-    if (!socket) return
-    if (!deviceRef.current) return
+    if (!socket || !deviceRef.current) return
     const list = pendingProducersRef.current.splice(0)
     if (!list.length) return
-    console.log('[CL/FLUSH] pending producers=', list.length)
 
     for (const p of list) {
-      // Skip my own producer (by peerId match)
-      if (p.producerPeerId && p.producerPeerId === myPeerIdRef.current) {
-        console.log('[CL/FLUSH] skip self producer', p.id)
-        continue
-      }
-      try {
-        await consumeProducer(socket, p.id)
-      } catch (e) {
-        console.error('[CL/FLUSH] consume error', e)
-      }
+      if (p.producerPeerId && p.producerPeerId === myPeerIdRef.current) continue
+      try { await consumeProducer(socket, p.id) } catch (e) { console.error('[CL/FLUSH] consume error', e) }
     }
   }, [consumeProducer])
 
   const currentRoomIdRef = useRef<string>('')
 
-  /* ---------- core: joinRoom ---------- */
+  /* ---------- core: joinRoom (start muted) ---------- */
   const joinRoom = useCallback(
     async (roomId: string) => {
       if (socketRef.current) {
@@ -277,13 +211,14 @@ export function useMediasoup() {
       }
       currentRoomIdRef.current = roomId
 
-      console.log('[CL/GUM] start')
+      // Get mic permission but keep track disabled
       let stream: MediaStream | null = null
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         localStreamRef.current = stream
-        setMicOn(true)
-        console.log('[CL/GUM] ok, tracks=', stream.getAudioTracks().length)
+        const track = stream.getAudioTracks()[0]
+        if (track) track.enabled = false         // start muted
+        setMicOn(false)                          // reflect muted UI
       } catch (err) {
         console.error('[CL/GUM] failed', err)
         showSnackbar('Microphone permission denied', { severity: 'error' })
@@ -300,7 +235,6 @@ export function useMediasoup() {
 
       socket.on('connect', () => {
         myPeerIdRef.current = socket.id as string
-        console.log('[CL/SOCK] connected id=', socket.id)
       })
       socket.on('connect_error', (e) => console.error('[CL/SOCK] connect_error', e))
       socket.on('disconnect', (r) => console.log('[CL/SOCK] disconnect', r))
@@ -321,18 +255,13 @@ export function useMediasoup() {
           })
         })
 
-      /* ---------- server events ---------- */
-
-      // Initial state
+      // server events
       socket.on(
         'roomInfo',
         async (data: {
           peers: Array<{ peerId: string; userId?: string; name?: string }>
           producers?: Array<{ id: string; producerPeerId?: string; userId?: string; name?: string; muted?: boolean }>
         }) => {
-          console.log('[CL/ROOMINFO] peers=', data.peers?.length || 0, 'producers=', data.producers?.length || 0)
-
-          // Presence map
           const next: Record<string, Participant> = {}
           for (const p of data.peers || []) {
             next[p.peerId] = {
@@ -340,16 +269,14 @@ export function useMediasoup() {
               userId: p.userId,
               id: p.userId || p.peerId,
               name: p.name || p.userId || p.peerId,
-              muted: undefined,
+              muted: true,
             }
           }
           peersRef.current = next
-          emitPresence()
+          setParticipants(Object.values(next))
 
-          // Buffer producers until device ready
           if (Array.isArray(data.producers)) {
             for (const prod of data.producers) {
-              // Show owner presence/mute if not in peers (creator may be alone)
               if (prod.producerPeerId && !peersRef.current[prod.producerPeerId]) {
                 peersRef.current[prod.producerPeerId] = {
                   peerId: prod.producerPeerId,
@@ -358,52 +285,37 @@ export function useMediasoup() {
                   name: prod.name || prod.userId || prod.producerPeerId,
                   muted: prod.muted,
                 }
-                emitPresence()
               } else if (prod.producerPeerId && peersRef.current[prod.producerPeerId]) {
                 peersRef.current[prod.producerPeerId] = {
                   ...peersRef.current[prod.producerPeerId],
                   muted: prod.muted,
                 }
-                emitPresence()
               }
-
-              // enqueue for consumption (we'll filter self later)
+              setParticipants(Object.values(peersRef.current))
               pendingProducersRef.current.push(prod)
             }
           }
 
-          // If device already ready, flush now
-          if (deviceRef.current) {
-            await flushPendingProducers()
-          }
+          if (deviceRef.current) await flushPendingProducers()
         }
       )
 
-      // Presence events
       socket.on('peerJoined', ({ peerId, userId, name }) => {
-        console.log('[CL/EVENT] peerJoined', { peerId, userId, name })
         peersRef.current[peerId] = {
-          peerId,
-          userId,
-          id: userId || peerId,
-          name: name || userId || peerId,
-          muted: peersRef.current[peerId]?.muted,
+          peerId, userId, id: userId || peerId, name: name || userId || peerId,
+          muted: typeof peersRef.current[peerId]?.muted === 'boolean' ? peersRef.current[peerId]?.muted : (peersRef.current[peerId]?.muted ?? true),
+
         }
-        emitPresence()
+        setParticipants(Object.values(peersRef.current))
       })
       socket.on('peerLeft', ({ peerId }) => {
-        console.log('[CL/EVENT] peerLeft', { peerId })
         delete peersRef.current[peerId]
-        emitPresence()
+        setParticipants(Object.values(peersRef.current))
       })
 
-      // New producer after we joined
       socket.on(
         'newProducer',
         async (data: { producerId: string; producerPeerId: string; userId?: string; name?: string; muted?: boolean }) => {
-          console.log('[CL/EVENT] newProducer', data)
-
-          // Update presence
           const prev = peersRef.current[data.producerPeerId]
           peersRef.current[data.producerPeerId] = {
             peerId: data.producerPeerId,
@@ -414,7 +326,6 @@ export function useMediasoup() {
           }
           emitPresence()
 
-          // Buffer if device not ready; otherwise consume now (skip self)
           const payload = {
             id: data.producerId,
             producerPeerId: data.producerPeerId,
@@ -425,21 +336,14 @@ export function useMediasoup() {
           if (!deviceRef.current) {
             pendingProducersRef.current.push(payload)
           } else {
-            if (data.producerPeerId === myPeerIdRef.current) {
-              console.log('[CL/EVENT] newProducer: skip self')
-            } else {
-              try {
-                await consumeProducer(socket, data.producerId)
-              } catch (e) {
-                console.error('[CL/EVENT] newProducer consume error', e)
-              }
+            if (data.producerPeerId !== myPeerIdRef.current) {
+              try { await consumeProducer(socket, data.producerId) } catch (e) { console.error('[CL/newProducer] consume', e) }
             }
           }
         }
       )
 
       socket.on('producerMuted', ({ peerId, userId, muted }) => {
-        console.log('[CL/EVENT] producerMuted', { peerId, userId, muted })
         const prev = peersRef.current[peerId]
         if (prev) {
           peersRef.current[peerId] = { ...prev, muted: !!muted }
@@ -448,63 +352,50 @@ export function useMediasoup() {
       })
 
       socket.on('producerClosed', ({ producerId }) => {
-        console.log('[CL/EVENT] producerClosed', { producerId })
         cleanupPeerConsumer(producerId)
       })
 
-      /* ---------- 1) join ---------- */
-      await new Promise<void>((resolve, reject) => {
+      // 1) join
+      await new Promise<void>((resolve) => {
         socket.emit('joinRoom', { roomId }, (res: any) => {
-          if (res?.error) return reject(new Error(res.error))
-          console.log('[CL/JOIN] ok')
+          if (res?.error) {
+            console.error('[CL/JOIN] error', res.error)
+            // navigate('/', { replace: true })
+            // return reject(new Error(res.error))
+          }
           resolve()
         })
       })
 
-      /* ---------- 2) device + send transport ---------- */
+      // 2) device + send transport (no producing yet)
       try {
         const routerRtpCapabilities = await reqRouterCaps()
         const device = new Device()
         await device.load({ routerRtpCapabilities })
         deviceRef.current = device
-        console.log('[CL/DEVICE] loaded')
 
-        // Now that device is ready, flush any pre-received producers
         await flushPendingProducers()
 
         const sendTpParams = await reqCreateTransport('send')
         const sendTransport: SendTransport = (device as any).createSendTransport(sendTpParams)
         sendTransportRef.current = sendTransport
-        console.log('[CL/SEND] transport created id=', sendTransport.id)
 
         sendTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
           socket.emit('connectTransport', { transportId: sendTransport.id, dtlsParameters }, (res: any) => {
-            if (res?.error) {
-              console.error('[CL/SEND] connect error:', res.error)
-              return errback(res.error)
-            }
-            console.log('[CL/SEND] connected')
+            if (res?.error) return errback(res.error)
             callback()
           })
         })
 
         sendTransport.on('produce', ({ kind, rtpParameters }, callback, errback) => {
           socket.emit('produce', { transportId: sendTransport.id, kind, rtpParameters }, (res: any) => {
-            if (res?.error) {
-              console.error('[CL/SEND] produce error', res.error)
-              return errback(res.error)
-            }
-            console.log('[CL/SEND] produce ack id=', res.producerId)
+            if (res?.error) return errback(res.error)
             callback({ id: res.producerId })
           })
         })
 
-        // Produce local audio (mic)
-        const track = localStreamRef.current!.getAudioTracks()[0]
-        const producer: Producer = await (sendTransport as any).produce({ track })
-        producersRef.current[producer.id] = producer
-        setProducing(true)
-        console.log('[CL/SEND] local producer id=', producer.id)
+        // IMPORTANT: do NOT produce here. We start muted.
+        // Producer will be created on first unmute in toggleMic.
       } catch (err) {
         console.error('[CL/INIT] error', err)
         cleanupAll()
@@ -522,18 +413,53 @@ export function useMediasoup() {
     window.removeEventListener('beforeunload', cleanupAll)
   }, [cleanupAll])
 
-  const toggleMic = useCallback(() => {
+  // toggleMic creates producer on first unmute; then pause/resume on subsequent toggles
+  const toggleMic = useCallback(async () => {
     const stream = localStreamRef.current
     if (!stream) return
     const track = stream.getAudioTracks()[0]
     if (!track) return
-    const next = !track.enabled
-    track.enabled = next
-    setMicOn(next)
-    console.log('[CL/MIC] set track.enabled=', next)
-    try {
-      socketRef.current?.emit('producerMuted', { muted: !next })
-    } catch {}
+
+    const turningOn = !track.enabled
+
+    // turning ON
+    if (turningOn) {
+      // ensure send transport exists
+      if (!sendTransportRef.current) {
+        console.warn('[CL/MIC] no send transport yet')
+        return
+      }
+
+      // create a producer if we don't have one
+      let producer = Object.values(producersRef.current)[0] as any | undefined
+      if (!producer) {
+        try {
+          producer = await (sendTransportRef.current as any).produce({ track })
+          producersRef.current[producer.id] = producer
+          setProducing(true)
+        } catch (e) {
+          console.error('[CL/MIC] produce failed', e)
+          return
+        }
+      } else {
+        try { producer.resume?.() } catch {}
+      }
+
+      track.enabled = true
+      setMicOn(true)
+      try { socketRef.current?.emit('producerMuted', { muted: false }) } catch {}
+      return
+    }
+
+    // turning OFF
+    track.enabled = false
+    setMicOn(false)
+
+    const producer = Object.values(producersRef.current)[0] as any | undefined
+    if (producer) {
+      try { producer.pause?.() } catch {}
+    }
+    try { socketRef.current?.emit('producerMuted', { muted: true }) } catch {}
   }, [])
 
   useEffect(() => {
