@@ -19,6 +19,7 @@ type Props = {
   avatarSize?: number // default: 100
   sxBox?: SxProps<Theme>
   sxAvatar?: SxProps<Theme>
+  withName?: boolean
 }
 
 export default function MemberAvatar({
@@ -27,6 +28,7 @@ export default function MemberAvatar({
   avatarSize = 100,
   sxBox = {},
   sxAvatar = {},
+  withName = true,
 }: Props) {
   const theme = useTheme()
 
@@ -86,7 +88,7 @@ export default function MemberAvatar({
         {initials}
       </Avatar>
 
-      <Typography
+      {withName && <Typography
         variant="body2"
         sx={{
           mt: 1,
@@ -100,7 +102,7 @@ export default function MemberAvatar({
         }}
       >
         {name}
-      </Typography>
+      </Typography>}
     </Box>
   )
 }

@@ -10,6 +10,7 @@ export default function VideoArea() {
         alignItems: 'center',
         justifyContent: 'center',
         color: 'text.secondary',
+        width: '100%',
       }}
     >
       <Typography variant="h5" fontWeight={500}>

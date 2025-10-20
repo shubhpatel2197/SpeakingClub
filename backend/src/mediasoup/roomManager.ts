@@ -2,11 +2,16 @@
 import * as mediasoup from 'mediasoup'
 import os from 'os'
 import dotenv from 'dotenv'
+// NEW
+import type { WebRtcTransport, DataProducer, DataConsumer } from 'mediasoup/node/lib/types'
+
 
 dotenv.config()
 
 const STUN_SERVER = { urls: 'stun:stun.l.google.com:19302' }
-
+type CreateTransportOpts = {
+  enableSctp?: boolean
+}
 type RtcIceServer = { urls: string | string[]; username?: string; credential?: string }
 
 function parseTurnServersFromEnv(): RtcIceServer[] {
@@ -19,6 +24,7 @@ function parseTurnServersFromEnv(): RtcIceServer[] {
   const credential = process.env.TURN_CREDENTIAL || ''
   return uris.map((u) => ({ urls: u, username, credential }))
 }
+
 
 /* ---------- registries exported for socket handlers ---------- */
 export const rooms = new Map<string, Room>()
@@ -33,6 +39,8 @@ export class Room {
   public transports: Map<string, mediasoup.types.WebRtcTransport> = new Map()
   public producers: Map<string, mediasoup.types.Producer> = new Map()
   public consumers: Map<string, mediasoup.types.Consumer> = new Map()
+  public dataProducers: Map<string, DataProducer> = new Map()
+  public dataConsumers: Map<string, DataConsumer> = new Map()
 
   constructor(id: string, router: mediasoup.types.Router) {
     this.id = id
@@ -59,12 +67,13 @@ export class Room {
   }
 
   // create a WebRtcTransport, store it, and return the params client needs
-  async createWebRtcTransport(): Promise<{
+  async createWebRtcTransport(opts: CreateTransportOpts = {}): Promise<{
     id: string
     iceParameters: mediasoup.types.IceParameters
     iceCandidates: mediasoup.types.IceCandidate[]
     dtlsParameters: mediasoup.types.DtlsParameters
     iceServers: RtcIceServer[]
+    sctpParameters?: mediasoup.types.SctpParameters
   }> {
     const webRtcTransportOptions: mediasoup.types.WebRtcTransportOptions = {
       listenIps: [
@@ -78,6 +87,8 @@ export class Room {
       preferUdp: true,
       initialAvailableOutgoingBitrate: 1_000_000,
       appData: {},
+      enableSctp: opts.enableSctp !== false, 
+      numSctpStreams: { OS: 1024, MIS: 1024 }
     }
 
     const transport = await this.router.createWebRtcTransport(webRtcTransportOptions)
@@ -93,6 +104,7 @@ export class Room {
       iceCandidates: transport.iceCandidates,
       dtlsParameters: transport.dtlsParameters,
       iceServers: parseTurnServersFromEnv(),
+      sctpParameters: transport.sctpParameters
     }
   }
 
@@ -161,12 +173,68 @@ async consume(
   }
 }
 
+async  produceData(transportId: string, opts: {
+  sctpStreamParameters: any,
+  label?: string,
+  protocol?: string
+}) {
+  const transport = this.transports.get(transportId) as WebRtcTransport | undefined
+  if (!transport) throw new Error('transport not found')
+
+  const dataProducer = await transport.produceData({
+    sctpStreamParameters: opts.sctpStreamParameters,
+    label: opts.label,
+    protocol: opts.protocol
+  })
+
+  this.dataProducers.set(dataProducer.id, dataProducer)
+  dataProducer.on('transportclose', () => {
+    this.dataProducers.delete(dataProducer.id)
+  })
+
+  return dataProducer
+}
+
+// NEW: add as a method on your Room instance
+async  consumeData(transportId: string, dataProducerId: string) {
+  const transport = this.transports.get(transportId) as WebRtcTransport | undefined
+  if (!transport) throw new Error('transport not found')
+
+  const dataConsumer = await transport.consumeData({ dataProducerId })
+
+  this.dataConsumers.set(dataConsumer.id, dataConsumer)
+  dataConsumer.on('transportclose', () => {
+    this.dataConsumers.delete(dataConsumer.id)
+  })
+
+  // return the fields your socket handler expects
+  return {
+    id: dataConsumer.id,
+    dataProducerId: dataConsumer.dataProducerId,
+    sctpStreamParameters: dataConsumer.sctpStreamParameters,
+    label: dataConsumer.label,
+    protocol: dataConsumer.protocol
+  }
+}
+
+
 
   async resumeConsumer(consumerId: string) {
     const consumer = this.consumers.get(consumerId)
     if (!consumer) throw new Error('Consumer not found')
     await consumer.resume()
   }
+
+  // NEW: add as a method on your Room instance
+async  closeDataProducer(dataProducerId: string) {
+  const dp = this.dataProducers.get(dataProducerId)
+  if (dp) {
+    try { await dp.close() } catch {}
+    this.dataProducers.delete(dataProducerId)
+  }
+}
+
+  
 
   async destroyTransport(transportId: string) {
     const t = this.transports.get(transportId)

@@ -70,8 +70,8 @@ importers:
         specifier: ^9.0.2
         version: 9.0.2
       mediasoup:
-        specifier: 3.19.3
-        version: 3.19.3
+        specifier: 3.19.4
+        version: 3.19.4
       pg:
         specifier: ^8.16.3
         version: 8.16.3
@@ -1888,9 +1888,9 @@ packages:
     resolution: {integrity: sha512-MvuflyRMtdcR/+7Km18o4FdKfVb4GF5zdDFoIDx9dRtCH+K5jAU1n7LAs/Pl7ejIVC1BEWIalIH5Q31JdomtBQ==}
     engines: {node: '>=20'}
 
-  mediasoup@3.19.3:
-    resolution: {integrity: sha512-1BH68i/q/hVAuSQHFCMq6TJDwca74KMtxE7k79BGD+wrnkvi3PTpaNaVjJ/JLjpCZnBZ3WrtI3Js0nw7NHSAXw==}
-    engines: {node: '>=20'}
+  mediasoup@3.19.4:
+    resolution: {integrity: sha512-ADDeBlo6lfM7Id4EuGx0huH7G8ii1tx8D9a3uQwrZINMHsNugRsjOsHHms6VyHfDfkMz8C4F5v2nOVWeEQYqSA==}
+    engines: {node: '>=22'}
 
   merge-descriptors@1.0.3:
     resolution: {integrity: sha512-gaNvAS7TZ897/rVaZ0nMtAyxNyi/pdbjbAwUpFQpN70GqnVfOiXpeUUMKRBmzXaSQ8DdTX4/0ms62r2K+hE6mQ==}
@@ -4399,7 +4399,7 @@ snapshots:
       sdp-transform: 2.15.0
       supports-color: 10.2.2
 
-  mediasoup@3.19.3:
+  mediasoup@3.19.4:
     dependencies:
       '@types/ini': 4.1.1
       debug: 4.4.3(supports-color@10.2.2)
