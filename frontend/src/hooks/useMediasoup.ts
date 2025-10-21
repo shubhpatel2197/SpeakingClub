@@ -12,22 +12,17 @@ type Producer = any;
 type Consumer = any;
 
 type Participant = {
-  id: string; // prefer userId; fallback to peerId
+  id: string;
   peerId?: string;
   userId?: string;
   name?: string | null;
   muted?: boolean;
 };
 
-const SIGNALING_BASE =
-  window.location.hostname === "localhost"
-    ? "http://localhost:4000"
-    : `http://app.local:8443`;
-
 export function useMediasoup() {
   const { showSnackbar } = useSnackbar();
   const { user } = useAuthContext();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // ok to keep
 
   const socketRef = useRef<Socket | null>(null);
   const myPeerIdRef = useRef<string | null>(null);
@@ -37,13 +32,24 @@ export function useMediasoup() {
   const recvTransportRef = useRef<RecvTransport | null>(null);
   const producersRef = useRef<Record<string, Producer>>({});
   const consumersRef = useRef<Record<string, Consumer>>({});
+  const consumersByProducerIdRef = useRef<Record<string, Consumer>>({});
   const audioElsRef = useRef<Record<string, HTMLAudioElement>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
 
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [micOn, setMicOn] = useState(false); // start muted
-  const [producing, setProducing] = useState(false);
+  // Screen-share refs/state
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenVideoProducerRef = useRef<Producer | null>(null);
+  const screenAudioProducerRef = useRef<Producer | null>(null);
+  const screenVideoProducerIdRef = useRef<string | null>(null);
+  const [isSharingScreen, setIsSharingScreen] = useState(false);
+  const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
+  const [screenSharerName, setScreenSharerName] = useState<string | null>(null);
+  const needConsumeScreenRef = useRef<boolean>(false);
 
+  // People / chat
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [micOn, setMicOn] = useState(false);
+  const [producing, setProducing] = useState(false);
   const peersRef = useRef<Record<string, Participant>>({});
 
   type DataProducer = any;
@@ -60,7 +66,7 @@ export function useMediasoup() {
   const typingRef = useRef<Record<string, boolean>>({});
   const lastTypingSentRef = useRef<number>(0);
 
-  // Buffer of producers we need to consume once device/recv ready
+  // Remote producers buffered until device is ready
   const pendingProducersRef = useRef<
     Array<{
       id: string;
@@ -70,6 +76,8 @@ export function useMediasoup() {
       muted?: boolean;
     }>
   >([]);
+
+  const currentRoomIdRef = useRef<string>("");
 
   function emitPresence() {
     const list = Object.values(peersRef.current);
@@ -90,9 +98,74 @@ export function useMediasoup() {
     dataProducerRef.current = dp;
   }, []);
 
+  /** Attach a track to the center "stage" <video id="screen-stage" /> */
+  const attachToScreenStage = useCallback((track: MediaStreamTrack | null) => {
+    const el = document.getElementById(
+      "screen-stage"
+    ) as HTMLVideoElement | null;
+    if (!el) return;
+
+    if (!track) {
+      try {
+        const ms = el.srcObject as MediaStream | null;
+        if (ms) ms.getTracks().forEach((t) => t.stop());
+      } catch {}
+      el.srcObject = null;
+      return;
+    }
+
+    const ms = new MediaStream();
+    ms.addTrack(track);
+
+    // Set flags before assigning srcObject for autoplay
+    el.muted = true;
+    el.playsInline = true;
+    el.autoplay = true;
+    el.srcObject = ms as any;
+
+    const tryPlay = () => el.play().catch(() => {});
+    tryPlay();
+    setTimeout(tryPlay, 50);
+  }, []);
+
+  /** Choose a concrete codec to avoid UnsupportedError */
+  function pickPreferredVideoCodec(device: Device | null) {
+    if (!device) return undefined;
+    const caps: any = (device as any).rtpCapabilities;
+    if (!caps?.codecs) return undefined;
+
+    const find = (mime: string) =>
+      caps.codecs.find((c: any) => String(c.mimeType).toLowerCase() === mime);
+
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const h264 = find("video/h264");
+    const vp8 = find("video/vp8");
+
+    if (isSafari && h264) return h264;
+    if (vp8) return vp8;
+    if (h264) return h264;
+    return caps.codecs.find((c: any) => c.kind === "video");
+  }
+
+  function pickScreenshareCodec(device: Device | null) {
+    if (!device) return undefined;
+    const caps: any = (device as any).rtpCapabilities;
+    const find = (mime: string) =>
+      caps?.codecs?.find((c: any) => String(c.mimeType).toLowerCase() === mime);
+
+    const vp9 = find("video/vp9");
+    const h264 = find("video/h264");
+    const vp8 = find("video/vp8");
+
+    // For screenshare, VP9 SVC is king when available
+    return (
+      vp9 || h264 || vp8 || caps?.codecs?.find((c: any) => c.kind === "video")
+    );
+  }
+
+  /** DataChannel consumer */
   const consumeDataProducer = useCallback(
     async (socket: Socket, dataProducerId: string) => {
-      // ensure RECV transport exists (even if nobody is producing A/V)
       if (!recvTransportRef.current) {
         const tpParams = await new Promise<any>((resolve, reject) => {
           socket.emit(
@@ -155,80 +228,94 @@ export function useMediasoup() {
     [appendMessage]
   );
 
-  const flushPendingDataProducers = useCallback(async () => {
-    const socket = socketRef.current;
-    if (!socket || !deviceRef.current) return;
-    for (const d of pendingDataProducersRef.current.splice(0)) {
-      if (d.producerPeerId === myPeerIdRef.current) continue;
+  /** Attach remote audio / detect screen video */
+  const attachConsumerTrack = useCallback(
+    (consumer: Consumer, key: string) => {
       try {
-        await consumeDataProducer(socket, d.id);
-      } catch {}
-    }
-  }, [consumeDataProducer]);
+        if ((consumer as any).kind === "video") {
+          const isScreen =
+            screenVideoProducerIdRef.current &&
+            key === screenVideoProducerIdRef.current;
+          if (isScreen) {
+            attachToScreenStage(consumer.track);
+          }
+          return; // ignore non-screen videos here
+        }
 
-  const attachConsumerTrack = useCallback((consumer: Consumer, key: string) => {
-    try {
-      const ms = new MediaStream();
-      ms.addTrack(consumer.track);
+        // Remote audio
+        const ms = new MediaStream();
+        ms.addTrack(consumer.track);
 
-      let audio = audioElsRef.current[key];
-      if (!audio) {
-        audio = document.createElement("audio");
-        audio.setAttribute("playsinline", "");
-        audio.autoplay = true;
-        audio.controls = false;
-        audio.volume = 1;
-        (
-          document.getElementById("remote-audio-container") ?? document.body
-        ).appendChild(audio);
-        audioElsRef.current[key] = audio;
-      }
-      // @ts-ignore
-      audio.srcObject = ms;
+        let audio = audioElsRef.current[key];
+        if (!audio) {
+          audio = document.createElement("audio");
+          audio.setAttribute("playsinline", "");
+          audio.autoplay = true;
+          audio.controls = false;
+          audio.volume = 1;
+          (
+            document.getElementById("remote-audio-container") ?? document.body
+          ).appendChild(audio);
+          audioElsRef.current[key] = audio;
+        }
+        // @ts-ignore
+        audio.srcObject = ms;
 
-      audio.play().catch(() => {
-        const btn = document.createElement("button");
-        btn.textContent = "Enable audio";
-        Object.assign(btn.style, {
-          position: "fixed",
-          right: "16px",
-          bottom: "16px",
-          zIndex: "9999",
-          padding: "8px 12px",
-          borderRadius: "8px",
-          cursor: "pointer",
+        audio.play().catch(() => {
+          const btn = document.createElement("button");
+          btn.textContent = "Enable audio";
+          Object.assign(btn.style, {
+            position: "fixed",
+            right: "16px",
+            bottom: "16px",
+            zIndex: "9999",
+            padding: "8px 12px",
+            borderRadius: "8px",
+            cursor: "pointer",
+          });
+          btn.onclick = async () => {
+            try {
+              await audio.play();
+              btn.remove();
+            } catch {}
+          };
+          document.body.appendChild(btn);
         });
-        btn.onclick = async () => {
-          try {
-            await audio.play();
-            btn.remove();
-          } catch {}
-        };
-        document.body.appendChild(btn);
-      });
-    } catch (err) {
-      console.error("[CL/ATTACH] error", err);
-    }
-  }, []);
-
-  const cleanupPeerConsumer = useCallback((producerId: string) => {
-    for (const [cid, consumer] of Object.entries(consumersRef.current)) {
-      if ((consumer as any).producerId === producerId) {
-        try {
-          (consumer as any).close();
-        } catch {}
-        delete consumersRef.current[cid];
+      } catch (err) {
+        console.error("[CL/ATTACH] error", err);
       }
-    }
-    const audio = audioElsRef.current[producerId];
-    if (audio) {
-      try {
-        audio.parentNode?.removeChild(audio);
-      } catch {}
-      delete audioElsRef.current[producerId];
-    }
-  }, []);
+    },
+    [attachToScreenStage]
+  );
 
+  /** Cleanup a single producer's consumers/elements */
+  const cleanupPeerConsumer = useCallback(
+    (producerId: string) => {
+      for (const [cid, consumer] of Object.entries(consumersRef.current)) {
+        if ((consumer as any).producerId === producerId) {
+          try {
+            (consumer as any).close();
+          } catch {}
+          delete consumersRef.current[cid];
+          delete consumersByProducerIdRef.current[producerId];
+        }
+      }
+      const audio = audioElsRef.current[producerId];
+      if (audio) {
+        try {
+          audio.parentNode?.removeChild(audio);
+        } catch {}
+        delete audioElsRef.current[producerId];
+      }
+      if (screenVideoProducerIdRef.current === producerId) {
+        attachToScreenStage(null);
+        screenVideoProducerIdRef.current = null;
+      }
+    },
+    [attachToScreenStage]
+  );
+
+  /** Full cleanup */
   const cleanupAll = useCallback(() => {
     try {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -248,6 +335,7 @@ export function useMediasoup() {
       } catch {}
     });
     consumersRef.current = {};
+    consumersByProducerIdRef.current = {};
 
     Object.values(audioElsRef.current).forEach((el) => {
       try {
@@ -279,14 +367,34 @@ export function useMediasoup() {
     pendingDataProducersRef.current = [];
     dataProducerRef.current = null;
     dataConsumersRef.current = {};
+    needConsumeScreenRef.current = false;
+
+    try {
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {}
+    screenStreamRef.current = null;
+    try {
+      (screenVideoProducerRef.current as any)?.close?.();
+    } catch {}
+    screenVideoProducerRef.current = null;
+    try {
+      (screenAudioProducerRef.current as any)?.close?.();
+    } catch {}
+    screenAudioProducerRef.current = null;
+
+    attachToScreenStage(null);
+    setIsSharingScreen(false);
+    setScreenSharerId(null);
+    setScreenSharerName(null);
+    screenVideoProducerIdRef.current = null;
 
     setParticipants([]);
-    setMicOn(false); // reset to muted
+    setMicOn(false);
     setProducing(false);
     setMessages([]);
-  }, []);
+  }, [attachToScreenStage]);
 
-  /** consume a single remote producer (if not self), ensuring recv transport exists */
+  /** Consume a remote producer (creates recv transport if missing) */
   const consumeProducer = useCallback(
     async (socket: Socket, producerId: string) => {
       if (!recvTransportRef.current) {
@@ -298,10 +406,7 @@ export function useMediasoup() {
               direction: "recv",
               enableSctp: true,
             },
-            (res: any) => {
-              if (res?.error) return reject(res.error);
-              resolve(res);
-            }
+            (res: any) => (res?.error ? reject(res.error) : resolve(res))
           );
         });
         if (!deviceRef.current) return;
@@ -313,10 +418,7 @@ export function useMediasoup() {
           socket.emit(
             "connectTransport",
             { transportId: recvTransport.id, dtlsParameters },
-            (res: any) => {
-              if (res?.error) return errback(res.error);
-              callback();
-            }
+            (res: any) => (res?.error ? errback(res.error) : callback())
           );
         });
       }
@@ -329,10 +431,7 @@ export function useMediasoup() {
             producerId,
             rtpCapabilities: deviceRef.current?.rtpCapabilities,
           },
-          (res: any) => {
-            if (res?.error) return reject(res.error);
-            resolve(res);
-          }
+          (res: any) => (res?.error ? reject(res.error) : resolve(res))
         );
       });
 
@@ -344,15 +443,45 @@ export function useMediasoup() {
         kind: consumerParams.kind,
         rtpParameters: consumerParams.rtpParameters,
       });
+
       consumersRef.current[consumer.id] = consumer;
-      attachConsumerTrack(consumer, consumer.producerId);
+      consumersByProducerIdRef.current[consumerParams.producerId] = consumer;
+
+      // If this is the known screen producer, attach right away
+      if (
+        consumerParams.kind === "video" &&
+        screenVideoProducerIdRef.current &&
+        consumerParams.producerId === screenVideoProducerIdRef.current
+      ) {
+        attachToScreenStage(consumer.track);
+        await (consumer as any).setPreferredLayers?.({
+          spatialLayer: 2,
+          temporalLayer: 2,
+        });
+      } else {
+        attachConsumerTrack(consumer, consumer.producerId);
+      }
 
       socket.emit("consumerResume", { consumerId: consumer.id });
     },
-    [attachConsumerTrack]
+    [attachConsumerTrack, attachToScreenStage]
   );
 
-  /** After device ready, process all buffered producers */
+  /** Ensure we consume the current screen producer once device/recv are ready */
+  const ensureConsumeScreenProducer = useCallback(async () => {
+    const s = socketRef.current;
+    const pid = screenVideoProducerIdRef.current;
+    if (!s || !pid) return;
+    if (!deviceRef.current || !recvTransportRef.current) return;
+    if (consumersByProducerIdRef.current[pid]) return;
+    try {
+      await consumeProducer(s, pid);
+    } catch (e) {
+      console.error("[CL] ensureConsumeScreenProducer failed", e);
+    }
+  }, [consumeProducer]);
+
+  /** Flush buffered producers once device is loaded */
   const flushPendingProducers = useCallback(async () => {
     const socket = socketRef.current;
     if (!socket || !deviceRef.current) return;
@@ -364,33 +493,26 @@ export function useMediasoup() {
         continue;
       try {
         await consumeProducer(socket, p.id);
-      } catch (e) {
-        console.error("[CL/FLUSH] consume error", e);
-      }
+      } catch {}
     }
   }, [consumeProducer]);
 
-  const currentRoomIdRef = useRef<string>("");
-
-  /* ---------- core: joinRoom (start muted) ---------- */
+  /** Join room and wire all events */
   const joinRoom = useCallback(
     async (roomId: string) => {
-      if (socketRef.current) {
-        console.warn("[CL] already connected; call leaveRoom first");
-        return;
-      }
+      if (socketRef.current) return;
       currentRoomIdRef.current = roomId;
 
-      // Get mic permission but keep track disabled
-      let stream: MediaStream | null = null;
+      // Get mic permission but start muted
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
         localStreamRef.current = stream;
         const track = stream.getAudioTracks()[0];
-        if (track) track.enabled = false; // start muted
-        setMicOn(false); // reflect muted UI
+        if (track) track.enabled = false;
+        setMicOn(false);
       } catch (err) {
-        console.error("[CL/GUM] failed", err);
         showSnackbar("Microphone permission denied", { severity: "error" });
         throw err;
       }
@@ -406,32 +528,8 @@ export function useMediasoup() {
       socket.on("connect", () => {
         myPeerIdRef.current = socket.id as string;
       });
-      socket.on("connect_error", (e) =>
-        console.error("[CL/SOCK] connect_error", e)
-      );
-      socket.on("disconnect", (r) => console.log("[CL/SOCK] disconnect", r));
 
-      // Helpers
-      const reqRouterCaps = () =>
-        new Promise<any>((resolve, reject) => {
-          socket.emit("getRouterRtpCapabilities", { roomId }, (res: any) => {
-            if (res?.error) return reject(res.error);
-            resolve(res.routerRtpCapabilities);
-          });
-        });
-      const reqCreateTransport = (direction: "send" | "recv") =>
-        new Promise<any>((resolve, reject) => {
-          socket.emit(
-            "createWebRtcTransport",
-            { roomId, direction, enableSctp: true },
-            (res: any) => {
-              if (res?.error) return reject(res.error);
-              resolve(res);
-            }
-          );
-        });
-
-      // server events
+      // ---- Server events ----
       socket.on(
         "roomInfo",
         async (data: {
@@ -445,6 +543,12 @@ export function useMediasoup() {
           }>;
           dataProducers?: Array<{ id: string; producerPeerId?: string }>;
           recentChat?: Array<ChatMessage>;
+          screenShare?: {
+            sharerUserId?: string | null;
+            name?: string | null;
+            videoProducerId?: string | null;
+            audioProducerId?: string | null;
+          };
         }) => {
           const next: Record<string, Participant> = {};
           for (const p of data.peers || []) {
@@ -481,10 +585,10 @@ export function useMediasoup() {
                   muted: prod.muted,
                 };
               }
-              setParticipants(Object.values(peersRef.current));
               pendingProducersRef.current.push(prod);
             }
           }
+
           if (Array.isArray(data.dataProducers)) {
             for (const dp of data.dataProducers) {
               pendingDataProducersRef.current.push({
@@ -493,29 +597,37 @@ export function useMediasoup() {
               });
             }
           }
+
           if (Array.isArray(data.recentChat) && data.recentChat.length) {
             setMessages(data.recentChat.slice(-50));
           }
 
+          // If someone is already sharing, capture their producerId now
+          if (data.screenShare?.sharerUserId) {
+            setScreenSharerId(data.screenShare.sharerUserId || null);
+            setScreenSharerName(data.screenShare.name || null);
+
+            if (data.screenShare.videoProducerId) {
+              screenVideoProducerIdRef.current =
+                data.screenShare.videoProducerId;
+              needConsumeScreenRef.current = true; // defer until transports ready
+              await ensureConsumeScreenProducer(); // will no-op until ready
+            }
+          }
+
+          // If device already loaded, flush buffered producers & data producers now
           if (deviceRef.current) {
             await flushPendingProducers();
-            await flushPendingDataProducers();
-          }
-        }
-      );
-
-      socket.on(
-        "newDataProducer",
-        async ({ dataProducerId, producerPeerId }) => {
-          if (!deviceRef.current) {
-            pendingDataProducersRef.current.push({
-              id: dataProducerId,
-              producerPeerId,
-            });
-          } else if (producerPeerId !== myPeerIdRef.current) {
-            try {
-              await consumeDataProducer(socket, dataProducerId);
-            } catch {}
+            const s = socketRef.current;
+            if (s) {
+              for (const d of pendingDataProducersRef.current.splice(0)) {
+                if (d.producerPeerId !== myPeerIdRef.current) {
+                  try {
+                    await consumeDataProducer(s, d.id);
+                  } catch {}
+                }
+              }
+            }
           }
         }
       );
@@ -533,6 +645,7 @@ export function useMediasoup() {
         };
         setParticipants(Object.values(peersRef.current));
       });
+
       socket.on("peerLeft", ({ peerId }) => {
         delete peersRef.current[peerId];
         setParticipants(Object.values(peersRef.current));
@@ -566,14 +679,10 @@ export function useMediasoup() {
           };
           if (!deviceRef.current) {
             pendingProducersRef.current.push(payload);
-          } else {
-            if (data.producerPeerId !== myPeerIdRef.current) {
-              try {
-                await consumeProducer(socket, data.producerId);
-              } catch (e) {
-                console.error("[CL/newProducer] consume", e);
-              }
-            }
+          } else if (data.producerPeerId !== myPeerIdRef.current) {
+            try {
+              await consumeProducer(socket, data.producerId);
+            } catch {}
           }
         }
       );
@@ -590,29 +699,99 @@ export function useMediasoup() {
         cleanupPeerConsumer(producerId);
       });
 
-      // 1) join
-      await new Promise<void>((resolve) => {
-        socket.emit("joinRoom", { roomId }, (res: any) => {
-          if (res?.error) {
-            console.error("[CL/JOIN] error", res.error);
-            // navigate('/', { replace: true })
-            // return (new Error(res.error))
+      // ---- Screen-share signaling ----
+      socket.on(
+        "screenShare:state",
+        ({
+          sharerUserId,
+          name,
+        }: {
+          sharerUserId?: string | null;
+          name?: string | null;
+        }) => {
+          setScreenSharerId(sharerUserId || null);
+          setScreenSharerName(name || null);
+          if (!sharerUserId) {
+            attachToScreenStage(null);
+            screenVideoProducerIdRef.current = null;
           }
-          resolve();
-        });
+        }
+      );
+
+      socket.on(
+        "screenShare:started",
+        async ({
+          sharerUserId,
+          name,
+          videoProducerId,
+        }: {
+          sharerUserId: string;
+          name?: string;
+          videoProducerId?: string | null;
+        }) => {
+          if (sharerUserId === user.id) return; // local sharer already attached
+
+          setScreenSharerId(sharerUserId);
+          setScreenSharerName(name || null);
+
+          if (!videoProducerId) return;
+
+          screenVideoProducerIdRef.current = videoProducerId;
+          needConsumeScreenRef.current = true;
+          await ensureConsumeScreenProducer();
+
+          const c = consumersByProducerIdRef.current[videoProducerId];
+          if (c && (c as any).kind === "video") {
+            attachToScreenStage(c.track);
+            setTimeout(() => {
+              const cc = consumersByProducerIdRef.current[videoProducerId];
+              if (cc) attachToScreenStage(cc.track);
+            }, 60);
+          }
+        }
+      );
+
+      socket.on(
+        "screenShare:stopped",
+        ({ sharerUserId }: { sharerUserId: string }) => {
+          if (sharerUserId !== user.id) {
+            setScreenSharerId(null);
+            setScreenSharerName(null);
+            attachToScreenStage(null);
+            screenVideoProducerIdRef.current = null;
+          }
+        }
+      );
+
+      // ---- Join, then set up device/transports ----
+      await new Promise<void>((resolve) => {
+        socket.emit("joinRoom", { roomId }, () => resolve());
       });
 
-      // 2) device  send transport (no producing yet)
       try {
-        const routerRtpCapabilities = await reqRouterCaps();
+        const routerRtpCapabilities = await new Promise<any>(
+          (resolve, reject) => {
+            socket.emit("getRouterRtpCapabilities", { roomId }, (res: any) => {
+              if (res?.error) return reject(res.error);
+              resolve(res.routerRtpCapabilities);
+            });
+          }
+        );
+
         const device = new Device();
         await device.load({ routerRtpCapabilities });
         deviceRef.current = device;
 
-        await flushPendingProducers();
-        await flushPendingDataProducers();
+        await createDataProducerIfNeeded();
 
-        const sendTpParams = await reqCreateTransport("send");
+        // SEND transport
+        const sendTpParams = await new Promise<any>((resolve, reject) => {
+          socket.emit(
+            "createWebRtcTransport",
+            { roomId, direction: "send", enableSctp: true },
+            (res: any) => (res?.error ? reject(res.error) : resolve(res))
+          );
+        });
         const sendTransport: SendTransport = (
           device as any
         ).createSendTransport(sendTpParams);
@@ -622,10 +801,7 @@ export function useMediasoup() {
           socket.emit(
             "connectTransport",
             { transportId: sendTransport.id, dtlsParameters },
-            (res: any) => {
-              if (res?.error) return errback(res.error);
-              callback();
-            }
+            (res: any) => (res?.error ? errback(res.error) : callback())
           );
         });
 
@@ -635,13 +811,14 @@ export function useMediasoup() {
             socket.emit(
               "produce",
               { transportId: sendTransport.id, kind, rtpParameters },
-              (res: any) => {
-                if (res?.error) return errback(res.error);
-                callback({ id: res.producerId });
-              }
+              (res: any) =>
+                res?.error
+                  ? errback(res.error)
+                  : callback({ id: res.producerId })
             );
           }
         );
+
         (sendTransport as any).on(
           "producedata",
           (params: any, callback: any, errback: any) => {
@@ -653,18 +830,71 @@ export function useMediasoup() {
                 label: params.label,
                 protocol: params.protocol,
               },
-              (res: any) => {
-                if (res?.error) return errback(res.error);
-                callback({ id: res.dataProducerId });
-              }
+              (res: any) =>
+                res?.error
+                  ? errback(res.error)
+                  : callback({ id: res.dataProducerId })
             );
           }
         );
 
         await createDataProducerIfNeeded();
 
+        socket.on(
+          "newDataProducer",
+          async ({
+            dataProducerId,
+            producerPeerId,
+          }: {
+            dataProducerId: string;
+            producerPeerId: string;
+          }) => {
+            // Ignore our own data producer
+            if (producerPeerId === myPeerIdRef.current) return;
+
+            // If device/recv not ready yet, queue it
+            if (!deviceRef.current || !recvTransportRef.current) {
+              pendingDataProducersRef.current.push({
+                id: dataProducerId,
+                producerPeerId,
+              });
+              return;
+            }
+
+            // Otherwise consume immediately
+            try {
+              await consumeDataProducer(socket, dataProducerId);
+            } catch (e) {
+              console.error("[CL] consumeDataProducer failed", e);
+            }
+          }
+        );
+
+        socket.on(
+          "dataProducerClosed",
+          ({ dataProducerId }: { dataProducerId: string }) => {
+            const dcEntry = Object.entries(dataConsumersRef.current).find(
+              ([, dc]) => (dc as any).dataProducerId === dataProducerId
+            );
+            if (dcEntry) {
+              const [id, dc] = dcEntry;
+              try {
+                (dc as any).close?.();
+              } catch {}
+              delete dataConsumersRef.current[id];
+            }
+          }
+        );
+
+        // RECV transport
         if (!recvTransportRef.current) {
-          const recvTpParams = await reqCreateTransport("recv");
+          const recvTpParams = await new Promise<any>((resolve, reject) => {
+            socket.emit(
+              "createWebRtcTransport",
+              { roomId, direction: "recv", enableSctp: true },
+              (res: any) => (res?.error ? reject(res.error) : resolve(res))
+            );
+          });
           const recvTransport: RecvTransport = (
             device as any
           ).createRecvTransport(recvTpParams);
@@ -680,8 +910,28 @@ export function useMediasoup() {
             }
           );
         }
+
+        // Now that transports exist, if we owe a screen consume, do it
+        if (needConsumeScreenRef.current) {
+          await ensureConsumeScreenProducer();
+          needConsumeScreenRef.current = false;
+        }
+
+        // Flush any producers that arrived early
+        await flushPendingProducers();
+
+        // Flush pending data producers
+        const s = socketRef.current;
+        if (s) {
+          for (const d of pendingDataProducersRef.current.splice(0)) {
+            if (d.producerPeerId !== myPeerIdRef.current) {
+              try {
+                await consumeDataProducer(s, d.id);
+              } catch {}
+            }
+          }
+        }
       } catch (err) {
-        console.error("[CL/INIT] error", err);
         cleanupAll();
         throw err;
       }
@@ -690,12 +940,18 @@ export function useMediasoup() {
     },
     [
       attachConsumerTrack,
+      attachToScreenStage,
       cleanupAll,
+      consumeDataProducer,
       consumeProducer,
+      createDataProducerIfNeeded,
       flushPendingProducers,
+      ensureConsumeScreenProducer,
       showSnackbar,
     ]
   );
+
+  /** Chat */
   const sendChat = useCallback(
     (text: string) => {
       const dp = dataProducerRef.current;
@@ -741,16 +997,237 @@ export function useMediasoup() {
     } catch {}
   }, []);
 
+  /** Screen-share control (client side) */
+  const requestStartShare = useCallback(async (): Promise<{
+    ok: boolean;
+    reason?: string;
+  }> => {
+    const socket = socketRef.current;
+    if (!socket) return { ok: false, reason: "not-connected" };
+    return await new Promise((resolve) => {
+      socket.emit(
+        "screenShare:request",
+        {
+          roomId: currentRoomIdRef.current,
+          userId: user.id,
+          name: user.name || user.email || "User",
+        },
+        (res: any) => {
+          if (res && res.ok) resolve({ ok: true });
+          else resolve({ ok: false, reason: res?.reason || "blocked" });
+        }
+      );
+    });
+  }, [user?.id, user?.name, user?.email]);
+
+  const startScreenShare = useCallback(async () => {
+    if (!sendTransportRef.current) return;
+    if (screenVideoProducerRef.current) return;
+
+    if (!deviceRef.current?.canProduce("video")) {
+      showSnackbar(
+        "This browser cannot send video to the SFU (codec mismatch).",
+        {
+          severity: "error",
+        }
+      );
+      return;
+    }
+
+    if (screenSharerId && screenSharerId !== user.id) {
+      showSnackbar(`${screenSharerName || "Someone"} is already sharing`, {
+        severity: "info",
+      });
+      return;
+    }
+
+    const gate = await requestStartShare();
+    if (!gate.ok) {
+      showSnackbar("Screen share is in use", { severity: "info" });
+      return;
+    }
+
+    const displayStream = await (navigator.mediaDevices as any).getDisplayMedia(
+      {
+        video: {
+          width: { ideal: 1920, max: 2560 },
+          height: { ideal: 1080, max: 1440 },
+          frameRate: { ideal: 30, max: 60 },
+        },
+        audio: true,
+      }
+    );
+
+    screenStreamRef.current = displayStream;
+
+    const vTrack = displayStream.getVideoTracks()[0];
+if (!vTrack) {
+  showSnackbar("No video track from display capture.", { severity: "error" });
+  return;
+}
+if ("contentHint" in vTrack) vTrack.contentHint = "detail"; // or "text"
+
+if (!sendTransportRef.current) {
+  console.warn("[SCREEN] No send transport yet");
+  showSnackbar("Not ready to send (transport missing).", { severity: "error" });
+  return;
+}
+
+const dev: any = deviceRef.current;
+const handlerName = dev?.handlerName;
+const caps = dev?.rtpCapabilities;
+
+console.log("[SCREEN] handlerName=", handlerName);
+console.log("[SCREEN] device.canProduce(video)=", deviceRef.current?.canProduce("video"));
+console.log("[SCREEN] rtpCapabilities=", caps);
+
+// 1) MINIMAL attempt
+let vProducer: any = null;
+try {
+  console.log("[SCREEN] trying MINIMAL produce()");
+  vProducer = await (sendTransportRef.current as any).produce({ track: vTrack });
+} catch (e) {
+  console.warn("[SCREEN] MINIMAL produce failed", e);
+}
+
+// 2) If minimal failed, try safe simulcast (no explicit codec)
+if (!vProducer) {
+  try {
+    console.log("[SCREEN] trying SAFE SIMULCAST");
+    vProducer = await (sendTransportRef.current as any).produce({
+      track: vTrack,
+      encodings: [
+        { maxBitrate: 3_000_000, priority: "high" },
+        { scaleResolutionDownBy: 2, maxBitrate: 900_000, priority: "medium" },
+      ],
+      codecOptions: { videoGoogleStartBitrate: 1200 },
+    });
+    try { await vProducer.setMaxSpatialLayer?.(1); } catch {}
+  } catch (e) {
+    console.warn("[SCREEN] SAFE SIMULCAST failed", e);
+  }
+}
+
+// 3) Optional: VP9 SVC on Chromium only
+if (!vProducer) {
+  const isChromium = /\b(Edg|Chrome|Chromium)\b/i.test(navigator.userAgent);
+  const vp9 = caps?.codecs?.find((c: any) => String(c.mimeType).toLowerCase() === "video/vp9");
+  if (isChromium && vp9) {
+    try {
+      console.log("[SCREEN] trying VP9 SVC (S3T3_KEY)");
+      vProducer = await (sendTransportRef.current as any).produce({
+        track: vTrack,
+        codec: vp9,
+        encodings: [{ scalabilityMode: "S3T3_KEY", priority: "high" }],
+        codecOptions: { videoGoogleStartBitrate: 1500 },
+      });
+    } catch (e) {
+      console.warn("[SCREEN] VP9 SVC failed", e);
+    }
+  }
+}
+
+if (!vProducer) {
+  console.error("[SCREEN] All produce attempts failed", { handlerName, caps });
+  showSnackbar("Could not start screen share (video produce failed).", { severity: "error" });
+  return;
+}
+
+screenVideoProducerRef.current = vProducer;
+const videoProducerId = vProducer.id;
+vTrack.onended = () => stopScreenShare();
+
+// bind & notify server as you already do
+socketRef.current?.emit("screenShare:bind", {
+  roomId: currentRoomIdRef.current,
+  userId: user.id,
+  videoProducerId,
+  audioProducerId: null,
+});
+
+
+    const aTrack = displayStream.getAudioTracks()[0];
+    let audioProducerId: string | null = null;
+    if (aTrack) {
+      const aProducer = await (sendTransportRef.current as any).produce({
+        track: aTrack,
+      });
+      screenAudioProducerRef.current = aProducer;
+      audioProducerId = aProducer.id;
+    }
+
+    // Announce binding so others know which producerId is "the screen"
+    socketRef.current?.emit("screenShare:bind", {
+      roomId: currentRoomIdRef.current,
+      userId: user.id,
+      videoProducerId,
+      audioProducerId,
+    });
+
+    setIsSharingScreen(true);
+    setScreenSharerId(user.id);
+    setScreenSharerName(user.name || user.email || "You");
+    screenVideoProducerIdRef.current = videoProducerId;
+    attachToScreenStage(vTrack || null);
+  }, [
+    requestStartShare,
+    screenSharerId,
+    screenSharerName,
+    user?.id,
+    user?.name,
+    user?.email,
+    showSnackbar,
+    attachToScreenStage,
+  ]);
+
+  const stopScreenShare = useCallback(() => {
+    try {
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {}
+    screenStreamRef.current = null;
+
+    if (screenVideoProducerRef.current) {
+      try {
+        (screenVideoProducerRef.current as any).close();
+      } catch {}
+      screenVideoProducerRef.current = null;
+    }
+    if (screenAudioProducerRef.current) {
+      try {
+        (screenAudioProducerRef.current as any).close();
+      } catch {}
+      screenAudioProducerRef.current = null;
+    }
+
+    socketRef.current?.emit("screenShare:stopped", {
+      roomId: currentRoomIdRef.current,
+      userId: user.id,
+    });
+
+    setIsSharingScreen(false);
+    setScreenSharerId(null);
+    setScreenSharerName(null);
+    screenVideoProducerIdRef.current = null;
+    attachToScreenStage(null);
+  }, [attachToScreenStage, user?.id]);
+
+  const toggleScreenShare = useCallback(async () => {
+    if (isSharingScreen) stopScreenShare();
+    else await startScreenShare();
+  }, [isSharingScreen, startScreenShare, stopScreenShare]);
+
+  /** Leave room */
   const leaveRoom = useCallback(() => {
-    console.log("[CL] leaveRoom");
     try {
       socketRef.current?.emit("leaveRoom");
     } catch {}
+    if (isSharingScreen) stopScreenShare();
     cleanupAll();
     window.removeEventListener("beforeunload", cleanupAll);
-  }, [cleanupAll]);
+    navigate("/", { replace: true });
+  }, [cleanupAll, isSharingScreen, stopScreenShare]);
 
-  // toggleMic creates producer on first unmute; then pause/resume on subsequent toggles
+  /** Mic toggle (producer pause/resume) */
   const toggleMic = useCallback(async () => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -759,23 +1236,16 @@ export function useMediasoup() {
 
     const turningOn = !track.enabled;
 
-    // turning ON
     if (turningOn) {
-      // ensure send transport exists
-      if (!sendTransportRef.current) {
-        console.warn("[CL/MIC] no send transport yet");
-        return;
-      }
+      if (!sendTransportRef.current) return;
 
-      // create a producer if we don't have one
       let producer = Object.values(producersRef.current)[0] as any | undefined;
       if (!producer) {
         try {
           producer = await (sendTransportRef.current as any).produce({ track });
           producersRef.current[producer.id] = producer;
           setProducing(true);
-        } catch (e) {
-          console.error("[CL/MIC] produce failed", e);
+        } catch {
           return;
         }
       } else {
@@ -792,7 +1262,6 @@ export function useMediasoup() {
       return;
     }
 
-    // turning OFF
     track.enabled = false;
     setMicOn(false);
 
@@ -824,5 +1293,12 @@ export function useMediasoup() {
     messages,
     sendChat,
     setTyping,
+
+    startScreenShare,
+    stopScreenShare,
+    toggleScreenShare,
+    isSharingScreen,
+    screenSharerId,
+    screenSharerName,
   };
 }

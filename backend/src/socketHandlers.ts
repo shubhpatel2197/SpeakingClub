@@ -10,7 +10,6 @@ import {
 import { removeUserFromGroup, joinGroupCore } from "./services/groupService";
 import prisma from "./lib/prisma";
 
-
 type JwtPayload = {
   userId: string;
   iat: number;
@@ -35,8 +34,16 @@ type AuthedSocket = Socket & {
   };
 };
 
+/** NEW: per-room screen-share state */
+type ScreenShareState = {
+  userId: string;
+  name?: string | null;
+  videoProducerId?: string | null;
+  audioProducerId?: string | null;
+};
+const screenShareByRoom = new Map<string, ScreenShareState | undefined>();
+
 function findOwnerOfDataProducer(io: IOServer, dataProducerId: string) {
-  // NEW
   for (const [, sRaw] of io.sockets.sockets) {
     const s = sRaw as AuthedSocket;
     if (s.data.dataProducers?.has(dataProducerId)) {
@@ -59,7 +66,6 @@ function getUserFromHandshake(socket: Socket): AuthedUser | null {
   }
 }
 
-/** Utility: find which socket owns a producerId + user identity */
 function findOwnerOfProducer(io: IOServer, producerId: string) {
   for (const [, sRaw] of io.sockets.sockets) {
     const s = sRaw as AuthedSocket;
@@ -71,7 +77,6 @@ function findOwnerOfProducer(io: IOServer, producerId: string) {
 }
 
 export function attachSocketServer(io: IOServer) {
-  // --- Auth gate ---
   io.use((socket, next) => {
     const s = socket as AuthedSocket;
     const user = getUserFromHandshake(socket);
@@ -80,22 +85,18 @@ export function attachSocketServer(io: IOServer) {
     next();
   });
 
-  // --- Groups channel (for Home list live updates) ---
   io.on("connection", (raw) => {
     const socket = raw as AuthedSocket;
     console.log("[SOCKET] connected", socket.id, "user=", socket.data.user);
 
     socket.on("groups:subscribe", () => {
       socket.join("groups");
-      // optional: immediate refresh ping
       socket.emit("groups:refresh");
     });
 
     socket.on("groups:unsubscribe", () => {
       socket.leave("groups");
     });
-
-    // -------- Room signaling (mediasoup) --------
 
     /** JOIN */
     socket.on(
@@ -118,7 +119,6 @@ export function attachSocketServer(io: IOServer) {
               };
             });
 
-          // Include all current producers with owner & paused state
           const producers = Array.from(room.producers.values()).map((p) => {
             const owner = findOwnerOfProducer(io, p.id);
             return {
@@ -137,7 +137,21 @@ export function attachSocketServer(io: IOServer) {
             return { id: dp.id, producerPeerId: owner?.socketId };
           });
 
-          socket.emit("roomInfo", { peers, producers, dataProducers });
+          /** NEW: include current screen-share state */
+          const ss = screenShareByRoom.get(roomId);
+          socket.emit("roomInfo", {
+            peers,
+            producers,
+            dataProducers,
+            screenShare: ss
+              ? {
+                  sharerUserId: ss.userId,
+                  name: ss.name || null,
+                  videoProducerId: ss.videoProducerId || null,
+                  audioProducerId: ss.audioProducerId || null,
+                }
+              : undefined,
+          });
 
           const u = socket.data.user || {};
           socket.to(roomId).emit("peerJoined", {
@@ -190,9 +204,8 @@ export function attachSocketServer(io: IOServer) {
           const room = getRoom(roomId);
           if (!room) return cb({ error: "room not found" });
 
-          const params = await room.createWebRtcTransport({enableSctp: !!enableSctp});
+          const params = await room.createWebRtcTransport({ enableSctp: !!enableSctp });
 
-          // Remember which room this transport belongs to (handled inside roomManager via transportToRoom)
           if (direction === "send") socket.data.sendTransportId = params.id;
           else socket.data.recvTransportId = params.id;
 
@@ -304,7 +317,6 @@ export function attachSocketServer(io: IOServer) {
             rtpCapabilities
           );
 
-          // Auto-resume to avoid client race
           const consumer = (room as any).consumers?.get?.(data.id);
           if (consumer && consumer.paused) {
             try {
@@ -325,7 +337,7 @@ export function attachSocketServer(io: IOServer) {
       }
     );
 
-    /** Producer mute/unmute (pause/resume) */
+    /** Producer pause/resume from mic toggle */
     socket.on(
       "producerMuted",
       async ({ muted }: { muted: boolean }, cb?: (res: any) => void) => {
@@ -357,10 +369,10 @@ export function attachSocketServer(io: IOServer) {
       }
     );
 
+    /** Data channel helpers (chat) */
     socket.on(
       "produceData",
       async ({ transportId, sctpStreamParameters, label, protocol }, cb) => {
-        // NEW
         const roomId = transportToRoom.get(transportId);
         const room = getRoom(roomId!);
         const dataProducer = await (room as any).produceData(transportId, {
@@ -379,7 +391,6 @@ export function attachSocketServer(io: IOServer) {
     );
 
     socket.on("consumeData", async ({ roomId, dataProducerId }, cb) => {
-      // NEW
       const room = getRoom(roomId);
       const consumerTransportId = socket.data.recvTransportId;
       const dc = await (room as any).consumeData(
@@ -396,7 +407,6 @@ export function attachSocketServer(io: IOServer) {
     });
 
     socket.on("dataConsumerResume", async ({ dataConsumerId }, cb) => {
-      // NEW
       const room = getRoom(socket.data.roomId!);
       const dc = (room as any).dataConsumers?.get?.(dataConsumerId);
       if (dc && (dc as any).paused) {
@@ -407,13 +417,63 @@ export function attachSocketServer(io: IOServer) {
       cb?.({ ok: true });
     });
 
+    /** ---------- Screen share single-owner flow (NEW) ---------- */
+
+    socket.on(
+      "screenShare:request",
+      ({ roomId, userId, name }: { roomId: string; userId: string; name?: string },
+       cb: (res: any) => void) => {
+        const curr = screenShareByRoom.get(roomId);
+        if (curr && curr.userId !== userId) {
+          cb({ ok: false, reason: "in-use" });
+          io.to(socket.id).emit("screenShare:state", {
+            sharerUserId: curr.userId,
+            name: curr.name || null,
+          });
+          return;
+        }
+        screenShareByRoom.set(roomId, { userId, name: name || null });
+        cb({ ok: true });
+        io.to(roomId).emit("screenShare:state", {
+          sharerUserId: userId,
+          name: name || null,
+        });
+      }
+    );
+
+    socket.on(
+      "screenShare:bind",
+      ({ roomId, userId, videoProducerId, audioProducerId }: { roomId: string; userId: string; videoProducerId?: string; audioProducerId?: string }) => {
+        const curr = screenShareByRoom.get(roomId);
+        if (!curr || curr.userId !== userId) return;
+        curr.videoProducerId = videoProducerId || null;
+        curr.audioProducerId = audioProducerId || null;
+        screenShareByRoom.set(roomId, curr);
+        io.to(roomId).emit("screenShare:started", {
+          sharerUserId: curr.userId,
+          name: curr.name || null,
+          videoProducerId: curr.videoProducerId || null,
+          audioProducerId: curr.audioProducerId || null,
+        });
+      }
+    );
+
+    socket.on(
+      "screenShare:stopped",
+      ({ roomId, userId }: { roomId: string; userId: string }) => {
+        const curr = screenShareByRoom.get(roomId);
+        if (!curr || curr.userId !== userId) return;
+        screenShareByRoom.delete(roomId);
+        io.to(roomId).emit("screenShare:stopped", { sharerUserId: userId });
+        io.to(roomId).emit("screenShare:state", { sharerUserId: null, name: null });
+      }
+    );
+
     /** Leave & cleanup */
     socket.on("leaveRoom", async () => {
-      console.log("[SOCK] leaveRoom", socket.id);
       await cleanupPeer(socket, io);
     });
     socket.on("disconnecting", async () => {
-      console.log("[SOCK] leaveRoom", socket.id);
       await cleanupPeer(socket, io);
     });
     socket.on("disconnect", () => {
@@ -429,6 +489,14 @@ export function attachSocketServer(io: IOServer) {
     if (!room) return;
 
     socket.to(roomId).emit("peerLeft", { peerId: socket.id });
+
+    /** If leaving user was the screen sharer, stop it */
+    const ss = screenShareByRoom.get(roomId);
+    if (ss && ss.userId === socket.data.user?.id) {
+      screenShareByRoom.delete(roomId);
+      io.to(roomId).emit("screenShare:stopped", { sharerUserId: ss.userId });
+      io.to(roomId).emit("screenShare:state", { sharerUserId: null, name: null });
+    }
 
     if (socket.data.producers) {
       for (const pid of socket.data.producers) {
@@ -449,7 +517,6 @@ export function attachSocketServer(io: IOServer) {
     }
 
     if (socket.data.dataProducers) {
-      // NEW
       for (const dpid of socket.data.dataProducers) {
         try {
           await (room as any).closeDataProducer(dpid);
@@ -463,7 +530,6 @@ export function attachSocketServer(io: IOServer) {
       await socket.leave(roomId);
     } catch {}
 
-    // update DB membership if you track it
     const userId = socket.data.user?.id;
     if (userId) {
       await removeUserFromGroup(userId, roomId).catch((e) => {
