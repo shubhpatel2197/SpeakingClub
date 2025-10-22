@@ -226,7 +226,7 @@ export default function Room() {
     //   return;
     // }
     joinRoom(roomId);
-  }, [roomId, joinRoom]);
+  }, [roomId]);
 
   const handleLeaveClick = async () => setConfirmLeaveOpen(true);
   const confirmLeave = async () => {
