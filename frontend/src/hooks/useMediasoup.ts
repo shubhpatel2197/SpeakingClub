@@ -886,6 +886,16 @@ export function useMediasoup() {
           }
         );
 
+        const onReplaced = () => {
+          console.log("onReplaced");
+          showSnackbar(
+            "This room is open in another tab. Closing this session.",
+            { severity: "info" }
+          );
+          navigate("/", { replace: true });
+        };
+        socket.on("session:replaced", onReplaced);
+
         // RECV transport
         if (!recvTransportRef.current) {
           const recvTpParams = await new Promise<any>((resolve, reject) => {
@@ -1061,90 +1071,111 @@ export function useMediasoup() {
     screenStreamRef.current = displayStream;
 
     const vTrack = displayStream.getVideoTracks()[0];
-if (!vTrack) {
-  showSnackbar("No video track from display capture.", { severity: "error" });
-  return;
-}
-if ("contentHint" in vTrack) vTrack.contentHint = "detail"; // or "text"
+    if (!vTrack) {
+      showSnackbar("No video track from display capture.", {
+        severity: "error",
+      });
+      return;
+    }
+    if ("contentHint" in vTrack) vTrack.contentHint = "detail"; // or "text"
 
-if (!sendTransportRef.current) {
-  console.warn("[SCREEN] No send transport yet");
-  showSnackbar("Not ready to send (transport missing).", { severity: "error" });
-  return;
-}
+    if (!sendTransportRef.current) {
+      console.warn("[SCREEN] No send transport yet");
+      showSnackbar("Not ready to send (transport missing).", {
+        severity: "error",
+      });
+      return;
+    }
 
-const dev: any = deviceRef.current;
-const handlerName = dev?.handlerName;
-const caps = dev?.rtpCapabilities;
+    const dev: any = deviceRef.current;
+    const handlerName = dev?.handlerName;
+    const caps = dev?.rtpCapabilities;
 
-console.log("[SCREEN] handlerName=", handlerName);
-console.log("[SCREEN] device.canProduce(video)=", deviceRef.current?.canProduce("video"));
-console.log("[SCREEN] rtpCapabilities=", caps);
+    console.log("[SCREEN] handlerName=", handlerName);
+    console.log(
+      "[SCREEN] device.canProduce(video)=",
+      deviceRef.current?.canProduce("video")
+    );
+    console.log("[SCREEN] rtpCapabilities=", caps);
 
-// 1) MINIMAL attempt
-let vProducer: any = null;
-try {
-  console.log("[SCREEN] trying MINIMAL produce()");
-  vProducer = await (sendTransportRef.current as any).produce({ track: vTrack });
-} catch (e) {
-  console.warn("[SCREEN] MINIMAL produce failed", e);
-}
-
-// 2) If minimal failed, try safe simulcast (no explicit codec)
-if (!vProducer) {
-  try {
-    console.log("[SCREEN] trying SAFE SIMULCAST");
-    vProducer = await (sendTransportRef.current as any).produce({
-      track: vTrack,
-      encodings: [
-        { maxBitrate: 3_000_000, priority: "high" },
-        { scaleResolutionDownBy: 2, maxBitrate: 900_000, priority: "medium" },
-      ],
-      codecOptions: { videoGoogleStartBitrate: 1200 },
-    });
-    try { await vProducer.setMaxSpatialLayer?.(1); } catch {}
-  } catch (e) {
-    console.warn("[SCREEN] SAFE SIMULCAST failed", e);
-  }
-}
-
-// 3) Optional: VP9 SVC on Chromium only
-if (!vProducer) {
-  const isChromium = /\b(Edg|Chrome|Chromium)\b/i.test(navigator.userAgent);
-  const vp9 = caps?.codecs?.find((c: any) => String(c.mimeType).toLowerCase() === "video/vp9");
-  if (isChromium && vp9) {
+    // 1) MINIMAL attempt
+    let vProducer: any = null;
     try {
-      console.log("[SCREEN] trying VP9 SVC (S3T3_KEY)");
+      console.log("[SCREEN] trying MINIMAL produce()");
       vProducer = await (sendTransportRef.current as any).produce({
         track: vTrack,
-        codec: vp9,
-        encodings: [{ scalabilityMode: "S3T3_KEY", priority: "high" }],
-        codecOptions: { videoGoogleStartBitrate: 1500 },
       });
     } catch (e) {
-      console.warn("[SCREEN] VP9 SVC failed", e);
+      console.warn("[SCREEN] MINIMAL produce failed", e);
     }
-  }
-}
 
-if (!vProducer) {
-  console.error("[SCREEN] All produce attempts failed", { handlerName, caps });
-  showSnackbar("Could not start screen share (video produce failed).", { severity: "error" });
-  return;
-}
+    // 2) If minimal failed, try safe simulcast (no explicit codec)
+    if (!vProducer) {
+      try {
+        console.log("[SCREEN] trying SAFE SIMULCAST");
+        vProducer = await (sendTransportRef.current as any).produce({
+          track: vTrack,
+          encodings: [
+            { maxBitrate: 3_000_000, priority: "high" },
+            {
+              scaleResolutionDownBy: 2,
+              maxBitrate: 900_000,
+              priority: "medium",
+            },
+          ],
+          codecOptions: { videoGoogleStartBitrate: 1200 },
+        });
+        try {
+          await vProducer.setMaxSpatialLayer?.(1);
+        } catch {}
+      } catch (e) {
+        console.warn("[SCREEN] SAFE SIMULCAST failed", e);
+      }
+    }
 
-screenVideoProducerRef.current = vProducer;
-const videoProducerId = vProducer.id;
-vTrack.onended = () => stopScreenShare();
+    // 3) Optional: VP9 SVC on Chromium only
+    if (!vProducer) {
+      const isChromium = /\b(Edg|Chrome|Chromium)\b/i.test(navigator.userAgent);
+      const vp9 = caps?.codecs?.find(
+        (c: any) => String(c.mimeType).toLowerCase() === "video/vp9"
+      );
+      if (isChromium && vp9) {
+        try {
+          console.log("[SCREEN] trying VP9 SVC (S3T3_KEY)");
+          vProducer = await (sendTransportRef.current as any).produce({
+            track: vTrack,
+            codec: vp9,
+            encodings: [{ scalabilityMode: "S3T3_KEY", priority: "high" }],
+            codecOptions: { videoGoogleStartBitrate: 1500 },
+          });
+        } catch (e) {
+          console.warn("[SCREEN] VP9 SVC failed", e);
+        }
+      }
+    }
 
-// bind & notify server as you already do
-socketRef.current?.emit("screenShare:bind", {
-  roomId: currentRoomIdRef.current,
-  userId: user.id,
-  videoProducerId,
-  audioProducerId: null,
-});
+    if (!vProducer) {
+      console.error("[SCREEN] All produce attempts failed", {
+        handlerName,
+        caps,
+      });
+      showSnackbar("Could not start screen share (video produce failed).", {
+        severity: "error",
+      });
+      return;
+    }
 
+    screenVideoProducerRef.current = vProducer;
+    const videoProducerId = vProducer.id;
+    vTrack.onended = () => stopScreenShare();
+
+    // bind & notify server as you already do
+    socketRef.current?.emit("screenShare:bind", {
+      roomId: currentRoomIdRef.current,
+      userId: user.id,
+      videoProducerId,
+      audioProducerId: null,
+    });
 
     const aTrack = displayStream.getAudioTracks()[0];
     let audioProducerId: string | null = null;

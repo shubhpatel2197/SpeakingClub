@@ -53,6 +53,20 @@ function findOwnerOfDataProducer(io: IOServer, dataProducerId: string) {
   return null;
 }
 
+function findSocketInRoomByUser(
+  io: IOServer,
+  roomId: string,
+  userId: string
+): AuthedSocket | null {
+  const room = io.sockets.adapter.rooms.get(roomId);
+  if (!room) return null;
+  for (const sid of room) {
+    const s = io.sockets.sockets.get(sid) as AuthedSocket | undefined;
+    if (s?.data.user?.id === userId) return s || null;
+  }
+  return null;
+}
+
 function getUserFromHandshake(socket: Socket): AuthedUser | null {
   const raw = socket.handshake?.headers?.cookie || "";
   const cookies = parseCookie(raw || "");
@@ -106,6 +120,29 @@ export function attachSocketServer(io: IOServer) {
           const room = await getOrCreateRoom(roomId);
           await socket.join(roomId);
           socket.data.roomId = roomId;
+
+          const existing = findSocketInRoomByUser(
+            io,
+            roomId,
+            socket.data.user.id
+          );
+
+          if (existing && existing.id !== socket.id) {
+            console.log("[SOCKET] replacing existing", existing.id);
+
+            try {
+              await removeUserFromGroup(existing.data.user.id, roomId);  
+              await cleanupPeer(existing as AuthedSocket, io);
+            } catch (e) {
+              console.error("removeUserFromGroup (pre-emit) failed:", e);
+              // You can decide to fail the join here if your policy requires it.
+            }
+            // Tell the old client it was replaced
+            existing.emit("session:replaced", {
+              roomId,
+              by: "another device/session",
+            });
+          }
 
           const peers = Array.from(io.sockets.adapter.rooms.get(roomId) || [])
             .filter((sid) => sid !== socket.id)
@@ -197,14 +234,20 @@ export function attachSocketServer(io: IOServer) {
     socket.on(
       "createWebRtcTransport",
       async (
-        { roomId, direction, enableSctp }: { roomId: string; direction: "send" | "recv"; enableSctp?: boolean },
+        {
+          roomId,
+          direction,
+          enableSctp,
+        }: { roomId: string; direction: "send" | "recv"; enableSctp?: boolean },
         cb: (res: any) => void
       ) => {
         try {
           const room = getRoom(roomId);
           if (!room) return cb({ error: "room not found" });
 
-          const params = await room.createWebRtcTransport({ enableSctp: !!enableSctp });
+          const params = await room.createWebRtcTransport({
+            enableSctp: !!enableSctp,
+          });
 
           if (direction === "send") socket.data.sendTransportId = params.id;
           else socket.data.recvTransportId = params.id;
@@ -421,8 +464,14 @@ export function attachSocketServer(io: IOServer) {
 
     socket.on(
       "screenShare:request",
-      ({ roomId, userId, name }: { roomId: string; userId: string; name?: string },
-       cb: (res: any) => void) => {
+      (
+        {
+          roomId,
+          userId,
+          name,
+        }: { roomId: string; userId: string; name?: string },
+        cb: (res: any) => void
+      ) => {
         const curr = screenShareByRoom.get(roomId);
         if (curr && curr.userId !== userId) {
           cb({ ok: false, reason: "in-use" });
@@ -443,7 +492,17 @@ export function attachSocketServer(io: IOServer) {
 
     socket.on(
       "screenShare:bind",
-      ({ roomId, userId, videoProducerId, audioProducerId }: { roomId: string; userId: string; videoProducerId?: string; audioProducerId?: string }) => {
+      ({
+        roomId,
+        userId,
+        videoProducerId,
+        audioProducerId,
+      }: {
+        roomId: string;
+        userId: string;
+        videoProducerId?: string;
+        audioProducerId?: string;
+      }) => {
         const curr = screenShareByRoom.get(roomId);
         if (!curr || curr.userId !== userId) return;
         curr.videoProducerId = videoProducerId || null;
@@ -465,7 +524,10 @@ export function attachSocketServer(io: IOServer) {
         if (!curr || curr.userId !== userId) return;
         screenShareByRoom.delete(roomId);
         io.to(roomId).emit("screenShare:stopped", { sharerUserId: userId });
-        io.to(roomId).emit("screenShare:state", { sharerUserId: null, name: null });
+        io.to(roomId).emit("screenShare:state", {
+          sharerUserId: null,
+          name: null,
+        });
       }
     );
 
@@ -495,7 +557,10 @@ export function attachSocketServer(io: IOServer) {
     if (ss && ss.userId === socket.data.user?.id) {
       screenShareByRoom.delete(roomId);
       io.to(roomId).emit("screenShare:stopped", { sharerUserId: ss.userId });
-      io.to(roomId).emit("screenShare:state", { sharerUserId: null, name: null });
+      io.to(roomId).emit("screenShare:state", {
+        sharerUserId: null,
+        name: null,
+      });
     }
 
     if (socket.data.producers) {

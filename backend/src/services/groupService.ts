@@ -18,9 +18,7 @@ export async function removeUserFromGroup(userId: string, groupId: string) {
 
   // non-owner path
   const membership = await prisma.membership.findUnique({ where: { userId } });
-  if (!membership || membership.groupId !== groupId) {
-    throw new Error("Membership not found for this group");
-  }
+  
   console.log(
     "Removing membership",
     membership.id,
@@ -85,23 +83,23 @@ export async function joinGroupCore(
   }
 
   // Existing membership?
-  const existingMembership = await prisma.membership.findUnique({
-    where: { userId },
-  });
+  // const existingMembership = await prisma.membership.findUnique({
+  //   where: { userId },
+  // });
 
-  console.log("Existing membership:", existingMembership);
+  // console.log("Existing membership:", existingMembership);
 
-  if (existingMembership) {
-    if (existingMembership.groupId !== groupId) {
-      const err = new Error("Already a member of another group");
-      (err as any).status = 409;
-      throw err;
-    } else {
-      const err = new Error("Already a member of group");
-      (err as any).status = 409;
-      throw err;
-    }
-  }
+  // if (existingMembership) {
+  //   if (existingMembership.groupId !== groupId) {
+  //     const err = new Error("Already a member of another group");
+  //     (err as any).status = 409;
+  //     throw err;
+  //   } else {
+  //     const err = new Error("Already a member of group");
+  //     (err as any).status = 409;
+  //     throw err;
+  //   }
+  // }
 
   // Capacity (owners can always join their own group)
   if (!isOwnerOfThis) {
