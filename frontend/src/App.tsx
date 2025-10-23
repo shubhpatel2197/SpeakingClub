@@ -6,12 +6,20 @@ import './App.css'
 import { useAuthContext } from './context/AuthProvider'
 import Home from './pages/Home'
 import NavBar from './components/ui/Navbar'
-import { RoomRouteWrapper } from './wrapper/RoomRouterWrapper'
+// import { RoomRouteWrapper } from './wrapper/RoomRouterWrapper'
 
 // lazy load Room to reduce initial bundle
 const Room = React.lazy(() => import('./pages/Room'))
 
-// ProtectedRoute accepts any React node as children
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const RoomRouteWrapperLazy = React.lazy(() =>
+  Promise.all([
+    import("./wrapper/RoomRouterWrapper"),
+    wait(2000), // enforce 2s minimum
+  ]).then(([mod]) => ({ default: mod.RoomRouteWrapper }))
+);
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
 
@@ -71,7 +79,7 @@ function App() {
             element={
               <ProtectedRoute>
                 <Suspense fallback={<div>Loading room...</div>}>
-                   <RoomRouteWrapper />
+                   <RoomRouteWrapperLazy />
                 </Suspense>
               </ProtectedRoute>
             }
