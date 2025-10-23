@@ -519,8 +519,12 @@ export function useMediasoup() {
 
       const socket = io("/", {
         path: "/socket.io",
-        transports: ["websocket"],
+        transports: ["websocket", "polling"],
         withCredentials: true,
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 5000,
         timeout: 20000,
       });
       socketRef.current = socket;

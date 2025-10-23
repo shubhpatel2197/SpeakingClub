@@ -216,15 +216,6 @@ export default function Room() {
 
   useEffect(() => {
     if (!roomId) return;
-    // const membersList = (group as any)?.memberships || [];
-    // const isMember = membersList.some((m: any) => {
-    //   const mid = (m as any).user?.id ?? (m as any).userId ?? (m as any).id;
-    //   return mid && mid === user?.id;
-    // });
-    // if (isMember) {
-    //   navigate("/", { replace: true });
-    //   return;
-    // }
     joinRoom(roomId);
   }, [roomId]);
 

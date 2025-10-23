@@ -11,6 +11,8 @@ const server = http.createServer(app)
 
 export const io = new IOServer(server, {
     path: '/socket.io',
+    pingInterval: 25000,  // default 25000 is ok; keep explicit
+    pingTimeout: 30000,
     cors: {
       origin(_o, cb) {
         cb(null, true)
