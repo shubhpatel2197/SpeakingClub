@@ -10,7 +10,6 @@ import {
   Stack,
   Backdrop,
   Paper,
-  Badge,
   useMediaQuery,
 } from "@mui/material";
 import MicIcon from "@mui/icons-material/Mic";
@@ -159,21 +158,36 @@ export default function Room() {
   } = useMediasoup();
   const group = useCurrentGroup();
 
-  // Chat open state: open by default on md+; closed on mobile
   const [chatOpen, setChatOpen] = useState<boolean>(isMdUp);
   useEffect(() => {
-    setChatOpen(isMdUp); // sync with breakpoint
+    setChatOpen(isMdUp);
   }, [isMdUp]);
 
+  const currentUserId = user?.id;
+
+  // count only messages that are not from the current user
+  const foreignCount = useMemo(() => {
+    return messages.reduce((acc, m) => acc + (m.from !== currentUserId ? 1 : 0), 0);
+  }, [messages, currentUserId]);
+
+  // unread logic based on "last seen" foreign count
   const [unread, setUnread] = useState(0);
-  const prevLenRef = useRef(0);
+  const lastSeenForeignRef = useRef(0);
+
+  // mark as seen when chat opens
   useEffect(() => {
-    // simple unread badge when chat is closed
-    if (!chatOpen && messages.length > prevLenRef.current) {
-      setUnread((u) => u + (messages.length - prevLenRef.current));
+    if (chatOpen) {
+      lastSeenForeignRef.current = foreignCount;
+      setUnread(0);
     }
-    prevLenRef.current = messages.length;
-  }, [messages.length, chatOpen]);
+  }, [chatOpen, foreignCount]);
+
+  // when chat is closed and new foreign messages arrive, update unread
+  useEffect(() => {
+    if (!chatOpen && foreignCount > lastSeenForeignRef.current) {
+      setUnread(foreignCount - lastSeenForeignRef.current);
+    }
+  }, [chatOpen, foreignCount]);
 
   const membersCount = useMemo(() => {
     if (!group) return 0;
@@ -226,8 +240,6 @@ export default function Room() {
   };
   const cancelLeave = () => setConfirmLeaveOpen(false);
 
-  const currentUserId = user?.id;
-
   const nameMapRef = useRef<Record<string, string>>({});
   const nameMap = useMemo(() => {
     const newMap = { ...nameMapRef.current };
@@ -277,7 +289,7 @@ export default function Room() {
         </Box>
 
         <Stack direction="row" spacing={1} alignItems="center">
-          {/* Chat toggle (mobile shows badge) */}
+          {/* Chat toggle with green dot when unread > 0 and chat closed */}
           <Tooltip title={chatOpen ? "Hide chat" : "Show chat"}>
             <span>
               <IconButton
@@ -287,11 +299,25 @@ export default function Room() {
                   if (next) setUnread(0);
                 }}
                 color="primary"
-                sx={{ display: { xs: "inline-flex", md: "inline-flex" } }}
+                sx={{ display: { xs: "inline-flex", md: "inline-flex" }, position: "relative" }}
+                aria-label="Open chat"
               >
-                <Badge color="error" badgeContent={!chatOpen ? unread : 0}>
-                  <ChatBubbleOutlineIcon />
-                </Badge>
+                <ChatBubbleOutlineIcon />
+                {!chatOpen && unread > 0 && (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 6,
+                      right: 6,
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      backgroundColor: "#22c55e",
+                      boxShadow: "0 0 4px #22c55e",
+                      zIndex: 1,
+                    }}
+                  />
+                )}
               </IconButton>
             </span>
           </Tooltip>
@@ -355,7 +381,7 @@ export default function Room() {
         </MainArea>
 
         <BottomBar sx={{ pr: reservedRight }}>
-          {/* Mic + share quick actions (keep compact on mobile) */}
+          {/* Mic + share quick actions */}
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mr: 1 }}>
             <Tooltip
               title={
@@ -450,12 +476,13 @@ export default function Room() {
             messages={messages}
             onSend={(t) => {
               sendChat(t);
+              // optional: you can leave this as-is; unread logic is foreign-only
               setUnread(0);
+              lastSeenForeignRef.current = foreignCount;
             }}
             onTyping={setTyping}
             nameMap={nameMap}
             selfId={currentUserId}
-            // make panel responsive without overlapping content on md+
             panelWidth={CHAT_WIDTH}
             mobileFullScreen
           />

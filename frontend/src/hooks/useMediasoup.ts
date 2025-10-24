@@ -79,6 +79,14 @@ export function useMediasoup() {
 
   const currentRoomIdRef = useRef<string>("");
 
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  const isFirefox = /Firefox\/\d+/.test(ua);
+  const isChromium =
+    /\b(Edg|Chrome|Chromium)\b/i.test(ua) && !isIOS; // Chrome/Edge desktop/android
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+
   function emitPresence() {
     const list = Object.values(peersRef.current);
     setParticipants(list);
@@ -100,9 +108,7 @@ export function useMediasoup() {
 
   /** Attach a track to the center "stage" <video id="screen-stage" /> */
   const attachToScreenStage = useCallback((track: MediaStreamTrack | null) => {
-    const el = document.getElementById(
-      "screen-stage"
-    ) as HTMLVideoElement | null;
+    const el = document.getElementById("screen-stage") as HTMLVideoElement | null;
     if (!el) return;
 
     if (!track) {
@@ -116,8 +122,6 @@ export function useMediasoup() {
 
     const ms = new MediaStream();
     ms.addTrack(track);
-
-    // Set flags before assigning srcObject for autoplay
     el.muted = true;
     el.playsInline = true;
     el.autoplay = true;
@@ -1012,10 +1016,7 @@ export function useMediasoup() {
   }, []);
 
   /** Screen-share control (client side) */
-  const requestStartShare = useCallback(async (): Promise<{
-    ok: boolean;
-    reason?: string;
-  }> => {
+  const requestStartShare = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     const socket = socketRef.current;
     if (!socket) return { ok: false, reason: "not-connected" };
     return await new Promise((resolve) => {
@@ -1033,187 +1034,6 @@ export function useMediasoup() {
       );
     });
   }, [user?.id, user?.name, user?.email]);
-
-  const startScreenShare = useCallback(async () => {
-    if (!sendTransportRef.current) return;
-    if (screenVideoProducerRef.current) return;
-
-    if (!deviceRef.current?.canProduce("video")) {
-      showSnackbar(
-        "This browser cannot send video to the SFU (codec mismatch).",
-        {
-          severity: "error",
-        }
-      );
-      return;
-    }
-
-    if (screenSharerId && screenSharerId !== user.id) {
-      showSnackbar(`${screenSharerName || "Someone"} is already sharing`, {
-        severity: "info",
-      });
-      return;
-    }
-
-    const gate = await requestStartShare();
-    if (!gate.ok) {
-      showSnackbar("Screen share is in use", { severity: "info" });
-      return;
-    }
-
-    const displayStream = await (navigator.mediaDevices as any).getDisplayMedia(
-      {
-        video: {
-          width: { ideal: 1920, max: 2560 },
-          height: { ideal: 1080, max: 1440 },
-          frameRate: { ideal: 30, max: 60 },
-        },
-        audio: true,
-      }
-    );
-
-    screenStreamRef.current = displayStream;
-
-    const vTrack = displayStream.getVideoTracks()[0];
-    if (!vTrack) {
-      showSnackbar("No video track from display capture.", {
-        severity: "error",
-      });
-      return;
-    }
-    if ("contentHint" in vTrack) vTrack.contentHint = "detail"; // or "text"
-
-    if (!sendTransportRef.current) {
-      console.warn("[SCREEN] No send transport yet");
-      showSnackbar("Not ready to send (transport missing).", {
-        severity: "error",
-      });
-      return;
-    }
-
-    const dev: any = deviceRef.current;
-    const handlerName = dev?.handlerName;
-    const caps = dev?.rtpCapabilities;
-
-    console.log("[SCREEN] handlerName=", handlerName);
-    console.log(
-      "[SCREEN] device.canProduce(video)=",
-      deviceRef.current?.canProduce("video")
-    );
-    console.log("[SCREEN] rtpCapabilities=", caps);
-
-    // 1) MINIMAL attempt
-    let vProducer: any = null;
-    try {
-      console.log("[SCREEN] trying MINIMAL produce()");
-      vProducer = await (sendTransportRef.current as any).produce({
-        track: vTrack,
-      });
-    } catch (e) {
-      console.warn("[SCREEN] MINIMAL produce failed", e);
-    }
-
-    // 2) If minimal failed, try safe simulcast (no explicit codec)
-    if (!vProducer) {
-      try {
-        console.log("[SCREEN] trying SAFE SIMULCAST");
-        vProducer = await (sendTransportRef.current as any).produce({
-          track: vTrack,
-          encodings: [
-            { maxBitrate: 3_000_000, priority: "high" },
-            {
-              scaleResolutionDownBy: 2,
-              maxBitrate: 900_000,
-              priority: "medium",
-            },
-          ],
-          codecOptions: { videoGoogleStartBitrate: 1200 },
-        });
-        try {
-          await vProducer.setMaxSpatialLayer?.(1);
-        } catch {}
-      } catch (e) {
-        console.warn("[SCREEN] SAFE SIMULCAST failed", e);
-      }
-    }
-
-    // 3) Optional: VP9 SVC on Chromium only
-    if (!vProducer) {
-      const isChromium = /\b(Edg|Chrome|Chromium)\b/i.test(navigator.userAgent);
-      const vp9 = caps?.codecs?.find(
-        (c: any) => String(c.mimeType).toLowerCase() === "video/vp9"
-      );
-      if (isChromium && vp9) {
-        try {
-          console.log("[SCREEN] trying VP9 SVC (S3T3_KEY)");
-          vProducer = await (sendTransportRef.current as any).produce({
-            track: vTrack,
-            codec: vp9,
-            encodings: [{ scalabilityMode: "S3T3_KEY", priority: "high" }],
-            codecOptions: { videoGoogleStartBitrate: 1500 },
-          });
-        } catch (e) {
-          console.warn("[SCREEN] VP9 SVC failed", e);
-        }
-      }
-    }
-
-    if (!vProducer) {
-      console.error("[SCREEN] All produce attempts failed", {
-        handlerName,
-        caps,
-      });
-      showSnackbar("Could not start screen share (video produce failed).", {
-        severity: "error",
-      });
-      return;
-    }
-
-    screenVideoProducerRef.current = vProducer;
-    const videoProducerId = vProducer.id;
-    vTrack.onended = () => stopScreenShare();
-
-    // bind & notify server as you already do
-    socketRef.current?.emit("screenShare:bind", {
-      roomId: currentRoomIdRef.current,
-      userId: user.id,
-      videoProducerId,
-      audioProducerId: null,
-    });
-
-    const aTrack = displayStream.getAudioTracks()[0];
-    let audioProducerId: string | null = null;
-    if (aTrack) {
-      const aProducer = await (sendTransportRef.current as any).produce({
-        track: aTrack,
-      });
-      screenAudioProducerRef.current = aProducer;
-      audioProducerId = aProducer.id;
-    }
-
-    // Announce binding so others know which producerId is "the screen"
-    socketRef.current?.emit("screenShare:bind", {
-      roomId: currentRoomIdRef.current,
-      userId: user.id,
-      videoProducerId,
-      audioProducerId,
-    });
-
-    setIsSharingScreen(true);
-    setScreenSharerId(user.id);
-    setScreenSharerName(user.name || user.email || "You");
-    screenVideoProducerIdRef.current = videoProducerId;
-    attachToScreenStage(vTrack || null);
-  }, [
-    requestStartShare,
-    screenSharerId,
-    screenSharerName,
-    user?.id,
-    user?.name,
-    user?.email,
-    showSnackbar,
-    attachToScreenStage,
-  ]);
 
   const stopScreenShare = useCallback(() => {
     try {
@@ -1245,6 +1065,212 @@ export function useMediasoup() {
     screenVideoProducerIdRef.current = null;
     attachToScreenStage(null);
   }, [attachToScreenStage, user?.id]);
+
+
+  const startScreenShare = useCallback(async () => {
+    if (!sendTransportRef.current) return;
+    if (screenVideoProducerRef.current) return;
+
+    if (!deviceRef.current?.canProduce("video")) {
+      showSnackbar("This browser cannot send video to the SFU (codec mismatch).", { severity: "error" });
+      return;
+    }
+
+    if (screenSharerId && screenSharerId !== user.id) {
+      showSnackbar(`${screenSharerName || "Someone"} is already sharing`, { severity: "info" });
+      return;
+    }
+
+    const gate = await requestStartShare();
+    if (!gate.ok) {
+      showSnackbar("Screen share is in use", { severity: "info" });
+      return;
+    }
+
+    // 1) Try getDisplayMedia with reasonable constraints per platform
+    const baseVideoConstraintsDesktop = {
+      width: { ideal: 1920, max: 2560 },
+      height: { ideal: 1080, max: 1440 },
+      frameRate: { ideal: 30, max: 60 },
+    };
+    const baseVideoConstraintsMobile = {
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 },
+      frameRate: { ideal: 30, max: 30 },
+    };
+
+    const wantAudio = !isIOS && !isFirefox; // Safari iOS/Firefox often can’t share tab audio
+    const videoConstraints = isMobile ? baseVideoConstraintsMobile : baseVideoConstraintsDesktop;
+
+    let displayStream: MediaStream | null = null;
+    try {
+      displayStream = await (navigator.mediaDevices as any).getDisplayMedia({
+        video: videoConstraints,
+        audio: wantAudio,
+      });
+    } catch (err) {
+      // Retry without audio if first attempt failed (common on Safari/mobile)
+      try {
+        displayStream = await (navigator.mediaDevices as any).getDisplayMedia({
+          video: videoConstraints,
+          audio: false,
+        });
+      } catch (e) {
+        showSnackbar("Permission denied or screen selection canceled.", { severity: "error" });
+        return;
+      }
+    }
+
+    screenStreamRef.current = displayStream!;
+    const vTrack = displayStream!.getVideoTracks()[0];
+    if (!vTrack) {
+      showSnackbar("No video track from display capture.", { severity: "error" });
+      return;
+    }
+    if ("contentHint" in vTrack) vTrack.contentHint = "detail"; // sharper text
+
+    if (!sendTransportRef.current) {
+      showSnackbar("Not ready to send (transport missing).", { severity: "error" });
+      return;
+    }
+
+    const dev: any = deviceRef.current;
+    const caps = dev?.rtpCapabilities;
+
+    // 2) Produce strategy by platform:
+    //    - Safari or Mobile: MINIMAL first, then H264-specific (no simulcast)
+    //    - Chromium desktop: your original best path (minimal -> simulcast -> VP9 SVC)
+    //    - Firefox desktop: minimal only (simulcast with screenshare can be flaky)
+    let vProducer: any = null;
+
+    // A) Minimal attempt (works most places)
+    try {
+      vProducer = await (sendTransportRef.current as any).produce({ track: vTrack });
+    } catch {
+      vProducer = null;
+    }
+
+    // B) Safari or Mobile fallback: try explicit codec (H264 preferred)
+    if (!vProducer && (isSafari || isMobile)) {
+      const h264 = caps?.codecs?.find(
+        (c: any) => String(c.mimeType).toLowerCase() === "video/h264"
+      );
+      try {
+        vProducer = await (sendTransportRef.current as any).produce({
+          track: vTrack,
+          codec: h264 || pickPreferredVideoCodec(deviceRef.current),
+          // No simulcast on Safari/mobile — reduces UnsupportedError risk
+          codecOptions: { videoGoogleStartBitrate: 800 },
+        });
+      } catch {
+        vProducer = null;
+      }
+    }
+
+    // C) Chromium desktop: try safe simulcast (keeps your desktop quality path intact)
+    if (!vProducer && isChromium && !isMobile) {
+      try {
+        vProducer = await (sendTransportRef.current as any).produce({
+          track: vTrack,
+          encodings: [
+            { maxBitrate: 3_000_000, priority: "high" },
+            { scaleResolutionDownBy: 2, maxBitrate: 900_000, priority: "medium" },
+          ],
+          codecOptions: { videoGoogleStartBitrate: 1200 },
+        });
+        try {
+          await vProducer.setMaxSpatialLayer?.(1);
+        } catch {}
+      } catch {
+        vProducer = null;
+      }
+    }
+
+    // D) Chromium desktop (optional VP9 SVC)
+    if (!vProducer && isChromium && !isMobile) {
+      const vp9 = caps?.codecs?.find(
+        (c: any) => String(c.mimeType).toLowerCase() === "video/vp9"
+      );
+      if (vp9) {
+        try {
+          vProducer = await (sendTransportRef.current as any).produce({
+            track: vTrack,
+            codec: vp9,
+            encodings: [{ scalabilityMode: "S3T3_KEY", priority: "high" }],
+            codecOptions: { videoGoogleStartBitrate: 1500 },
+          });
+        } catch {
+          vProducer = null;
+        }
+      }
+    }
+
+    // E) Firefox desktop final retry (no simulcast, no codec options)
+    if (!vProducer && isFirefox && !isMobile) {
+      try {
+        vProducer = await (sendTransportRef.current as any).produce({ track: vTrack });
+      } catch {
+        vProducer = null;
+      }
+    }
+
+    if (!vProducer) {
+      // Clean the capture stream we just opened
+      try {
+        displayStream!.getTracks().forEach((t) => t.stop());
+      } catch {}
+      screenStreamRef.current = null;
+
+      // Only now show the error — after all fallbacks
+      showSnackbar("Could not start screen share (video produce failed).", { severity: "error" });
+      return;
+    }
+
+    screenVideoProducerRef.current = vProducer;
+    const videoProducerId = vProducer.id;
+    vTrack.onended = () => stopScreenShare();
+
+    // Audio (best-effort): many mobile/Safari builds don’t allow tab/system audio
+    const aTrack = displayStream!.getAudioTracks()[0];
+    let audioProducerId: string | null = null;
+    if (aTrack) {
+      try {
+        const aProducer = await (sendTransportRef.current as any).produce({ track: aTrack });
+        screenAudioProducerRef.current = aProducer;
+        audioProducerId = aProducer.id;
+      } catch {
+        // ignore audio failure — video is the priority
+      }
+    }
+
+    // Notify server which producerId is "screen"
+    socketRef.current?.emit("screenShare:bind", {
+      roomId: currentRoomIdRef.current,
+      userId: user.id,
+      videoProducerId,
+      audioProducerId,
+    });
+
+    setIsSharingScreen(true);
+    setScreenSharerId(user.id);
+    setScreenSharerName(user.name || user.email || "You");
+    screenVideoProducerIdRef.current = videoProducerId;
+    attachToScreenStage(vTrack || null);
+  }, [
+    attachToScreenStage,
+    isChromium,
+    isFirefox,
+    isMobile,
+    isSafari,
+    requestStartShare,
+    screenSharerId,
+    screenSharerName,
+    showSnackbar,
+    stopScreenShare,
+    user?.email,
+    user?.id,
+    user?.name,
+  ]);
 
   const toggleScreenShare = useCallback(async () => {
     if (isSharingScreen) stopScreenShare();
@@ -1337,3 +1363,4 @@ export function useMediasoup() {
     screenSharerName,
   };
 }
+

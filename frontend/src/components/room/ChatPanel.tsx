@@ -61,6 +61,8 @@ export default function ChatPanel({
   const [kbInset, setKbInset] = useState(0);
   const [composerH, setComposerH] = useState(0);
 
+  
+
   const updateComposerHeight = () => {
     if (composerRef.current) setComposerH(composerRef.current.offsetHeight || 0);
   };
