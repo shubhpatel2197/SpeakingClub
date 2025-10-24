@@ -83,8 +83,7 @@ export function useMediasoup() {
   const isIOS = /iPad|iPhone|iPod/.test(ua);
   const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
   const isFirefox = /Firefox\/\d+/.test(ua);
-  const isChromium =
-    /\b(Edg|Chrome|Chromium)\b/i.test(ua) && !isIOS; // Chrome/Edge desktop/android
+  const isChromium = /\b(Edg|Chrome|Chromium)\b/i.test(ua) && !isIOS; // Chrome/Edge desktop/android
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
 
   function emitPresence() {
@@ -108,7 +107,9 @@ export function useMediasoup() {
 
   /** Attach a track to the center "stage" <video id="screen-stage" /> */
   const attachToScreenStage = useCallback((track: MediaStreamTrack | null) => {
-    const el = document.getElementById("screen-stage") as HTMLVideoElement | null;
+    const el = document.getElementById(
+      "screen-stage"
+    ) as HTMLVideoElement | null;
     if (!el) return;
 
     if (!track) {
@@ -1016,7 +1017,10 @@ export function useMediasoup() {
   }, []);
 
   /** Screen-share control (client side) */
-  const requestStartShare = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+  const requestStartShare = useCallback(async (): Promise<{
+    ok: boolean;
+    reason?: string;
+  }> => {
     const socket = socketRef.current;
     if (!socket) return { ok: false, reason: "not-connected" };
     return await new Promise((resolve) => {
@@ -1066,18 +1070,34 @@ export function useMediasoup() {
     attachToScreenStage(null);
   }, [attachToScreenStage, user?.id]);
 
-
   const startScreenShare = useCallback(async () => {
+    // Must be secure context
+    if (
+      location.protocol !== "https:" &&
+      location.hostname !== "localhost" &&
+      location.hostname !== "127.0.0.1"
+    ) {
+      showSnackbar("Screen share requires HTTPS (or localhost).", {
+        severity: "error",
+      });
+      return;
+    }
+
     if (!sendTransportRef.current) return;
     if (screenVideoProducerRef.current) return;
 
     if (!deviceRef.current?.canProduce("video")) {
-      showSnackbar("This browser cannot send video to the SFU (codec mismatch).", { severity: "error" });
+      showSnackbar(
+        "This browser cannot send video to the SFU (codec mismatch).",
+        { severity: "error" }
+      );
       return;
     }
 
     if (screenSharerId && screenSharerId !== user.id) {
-      showSnackbar(`${screenSharerName || "Someone"} is already sharing`, { severity: "info" });
+      showSnackbar(`${screenSharerName || "Someone"} is already sharing`, {
+        severity: "info",
+      });
       return;
     }
 
@@ -1087,36 +1107,73 @@ export function useMediasoup() {
       return;
     }
 
-    // 1) Try getDisplayMedia with reasonable constraints per platform
-    const baseVideoConstraintsDesktop = {
-      width: { ideal: 1920, max: 2560 },
-      height: { ideal: 1080, max: 1440 },
-      frameRate: { ideal: 30, max: 60 },
-    };
-    const baseVideoConstraintsMobile = {
-      width: { ideal: 1280, max: 1920 },
-      height: { ideal: 720, max: 1080 },
-      frameRate: { ideal: 30, max: 30 },
+    // --- Build constraints based on platform ---
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+    const isFirefox = /Firefox\/\d+/.test(ua);
+
+    // On Safari/iOS/most mobiles: keep it minimal; audio capture often unsupported
+    const minimalMobileConstraints: MediaStreamConstraints = {
+      video: true,
+      audio: false,
     };
 
-    const wantAudio = !isIOS && !isFirefox; // Safari iOS/Firefox often can’t share tab audio
-    const videoConstraints = isMobile ? baseVideoConstraintsMobile : baseVideoConstraintsDesktop;
+    // Desktop defaults (what you had)
+    const desktopConstraints: any = {
+      video: {
+        width: { ideal: 1920, max: 2560 },
+        height: { ideal: 1080, max: 1440 },
+        frameRate: { ideal: 30, max: 60 },
+      },
+      audio: !isFirefox, // Firefox usually can't tab-audio capture
+    };
+
+    // Choose first attempt constraints
+    const firstTryConstraints =
+      isMobile || isSafari ? minimalMobileConstraints : desktopConstraints;
 
     let displayStream: MediaStream | null = null;
+
+    // Try #1
     try {
-      displayStream = await (navigator.mediaDevices as any).getDisplayMedia({
-        video: videoConstraints,
-        audio: wantAudio,
-      });
-    } catch (err) {
-      // Retry without audio if first attempt failed (common on Safari/mobile)
+      displayStream = await (navigator.mediaDevices as any).getDisplayMedia(
+        firstTryConstraints
+      );
+    } catch (err: any) {
+      console.warn("[getDisplayMedia:first] error", err?.name, err?.message);
+
+      // Try #2 — safest possible: video only
       try {
         displayStream = await (navigator.mediaDevices as any).getDisplayMedia({
-          video: videoConstraints,
+          video: true,
           audio: false,
         });
-      } catch (e) {
-        showSnackbar("Permission denied or screen selection canceled.", { severity: "error" });
+      } catch (err2: any) {
+        console.warn(
+          "[getDisplayMedia:fallback] error",
+          err2?.name,
+          err2?.message
+        );
+
+        // Surface a friendlier message depending on the error
+        const name = err2?.name || err?.name;
+        if (name === "NotAllowedError") {
+          showSnackbar("Permission denied or screen picker closed.", {
+            severity: "error",
+          });
+        } else if (name === "NotFoundError") {
+          showSnackbar("No screen/window available to share.", {
+            severity: "error",
+          });
+        } else if (name === "SecurityError") {
+          showSnackbar("Screen share blocked by browser policy.", {
+            severity: "error",
+          });
+        } else {
+          showSnackbar("Could not start screen share.", { severity: "error" });
+        }
         return;
       }
     }
@@ -1124,33 +1181,38 @@ export function useMediasoup() {
     screenStreamRef.current = displayStream!;
     const vTrack = displayStream!.getVideoTracks()[0];
     if (!vTrack) {
-      showSnackbar("No video track from display capture.", { severity: "error" });
+      showSnackbar("No video track from display capture.", {
+        severity: "error",
+      });
       return;
     }
-    if ("contentHint" in vTrack) vTrack.contentHint = "detail"; // sharper text
+    if ("contentHint" in vTrack) vTrack.contentHint = "detail";
 
     if (!sendTransportRef.current) {
-      showSnackbar("Not ready to send (transport missing).", { severity: "error" });
+      showSnackbar("Not ready to send (transport missing).", {
+        severity: "error",
+      });
       return;
     }
 
+    // Produce video — keep desktop quality path; simplify for Safari/mobile
     const dev: any = deviceRef.current;
     const caps = dev?.rtpCapabilities;
+    const isChromiumDesktop =
+      /\b(Edg|Chrome|Chromium)\b/i.test(ua) && !isMobile;
 
-    // 2) Produce strategy by platform:
-    //    - Safari or Mobile: MINIMAL first, then H264-specific (no simulcast)
-    //    - Chromium desktop: your original best path (minimal -> simulcast -> VP9 SVC)
-    //    - Firefox desktop: minimal only (simulcast with screenshare can be flaky)
     let vProducer: any = null;
 
-    // A) Minimal attempt (works most places)
+    // Minimal attempt (works most places)
     try {
-      vProducer = await (sendTransportRef.current as any).produce({ track: vTrack });
+      vProducer = await (sendTransportRef.current as any).produce({
+        track: vTrack,
+      });
     } catch {
       vProducer = null;
     }
 
-    // B) Safari or Mobile fallback: try explicit codec (H264 preferred)
+    // Safari / Mobile: try explicit H264 w/o simulcast
     if (!vProducer && (isSafari || isMobile)) {
       const h264 = caps?.codecs?.find(
         (c: any) => String(c.mimeType).toLowerCase() === "video/h264"
@@ -1158,8 +1220,7 @@ export function useMediasoup() {
       try {
         vProducer = await (sendTransportRef.current as any).produce({
           track: vTrack,
-          codec: h264 || pickPreferredVideoCodec(deviceRef.current),
-          // No simulcast on Safari/mobile — reduces UnsupportedError risk
+          codec: h264, // undefined is fine if not found; we already tried minimal
           codecOptions: { videoGoogleStartBitrate: 800 },
         });
       } catch {
@@ -1167,14 +1228,18 @@ export function useMediasoup() {
       }
     }
 
-    // C) Chromium desktop: try safe simulcast (keeps your desktop quality path intact)
-    if (!vProducer && isChromium && !isMobile) {
+    // Chromium desktop: allow your higher-quality path
+    if (!vProducer && isChromiumDesktop) {
       try {
         vProducer = await (sendTransportRef.current as any).produce({
           track: vTrack,
           encodings: [
             { maxBitrate: 3_000_000, priority: "high" },
-            { scaleResolutionDownBy: 2, maxBitrate: 900_000, priority: "medium" },
+            {
+              scaleResolutionDownBy: 2,
+              maxBitrate: 900_000,
+              priority: "medium",
+            },
           ],
           codecOptions: { videoGoogleStartBitrate: 1200 },
         });
@@ -1186,43 +1251,15 @@ export function useMediasoup() {
       }
     }
 
-    // D) Chromium desktop (optional VP9 SVC)
-    if (!vProducer && isChromium && !isMobile) {
-      const vp9 = caps?.codecs?.find(
-        (c: any) => String(c.mimeType).toLowerCase() === "video/vp9"
-      );
-      if (vp9) {
-        try {
-          vProducer = await (sendTransportRef.current as any).produce({
-            track: vTrack,
-            codec: vp9,
-            encodings: [{ scalabilityMode: "S3T3_KEY", priority: "high" }],
-            codecOptions: { videoGoogleStartBitrate: 1500 },
-          });
-        } catch {
-          vProducer = null;
-        }
-      }
-    }
-
-    // E) Firefox desktop final retry (no simulcast, no codec options)
-    if (!vProducer && isFirefox && !isMobile) {
-      try {
-        vProducer = await (sendTransportRef.current as any).produce({ track: vTrack });
-      } catch {
-        vProducer = null;
-      }
-    }
-
     if (!vProducer) {
       // Clean the capture stream we just opened
       try {
         displayStream!.getTracks().forEach((t) => t.stop());
       } catch {}
       screenStreamRef.current = null;
-
-      // Only now show the error — after all fallbacks
-      showSnackbar("Could not start screen share (video produce failed).", { severity: "error" });
+      showSnackbar("Could not start screen share (video produce failed).", {
+        severity: "error",
+      });
       return;
     }
 
@@ -1230,20 +1267,21 @@ export function useMediasoup() {
     const videoProducerId = vProducer.id;
     vTrack.onended = () => stopScreenShare();
 
-    // Audio (best-effort): many mobile/Safari builds don’t allow tab/system audio
+    // Audio (best-effort). Don’t force it on Safari/mobile.
     const aTrack = displayStream!.getAudioTracks()[0];
     let audioProducerId: string | null = null;
     if (aTrack) {
       try {
-        const aProducer = await (sendTransportRef.current as any).produce({ track: aTrack });
+        const aProducer = await (sendTransportRef.current as any).produce({
+          track: aTrack,
+        });
         screenAudioProducerRef.current = aProducer;
         audioProducerId = aProducer.id;
       } catch {
-        // ignore audio failure — video is the priority
+        // ignore audio failure
       }
     }
 
-    // Notify server which producerId is "screen"
     socketRef.current?.emit("screenShare:bind", {
       roomId: currentRoomIdRef.current,
       userId: user.id,
@@ -1258,18 +1296,14 @@ export function useMediasoup() {
     attachToScreenStage(vTrack || null);
   }, [
     attachToScreenStage,
-    isChromium,
-    isFirefox,
-    isMobile,
-    isSafari,
     requestStartShare,
     screenSharerId,
     screenSharerName,
-    showSnackbar,
     stopScreenShare,
-    user?.email,
     user?.id,
     user?.name,
+    user?.email,
+    showSnackbar,
   ]);
 
   const toggleScreenShare = useCallback(async () => {
@@ -1363,4 +1397,3 @@ export function useMediasoup() {
     screenSharerName,
   };
 }
-
