@@ -111,7 +111,7 @@ export default function SignIn(props: { disableCustomTheme?: boolean }) {
 
     if (!password.value) {
       setPasswordError(true);
-      setPasswordErrorMessage("Password must be at least 6 characters long.");
+      // setPasswordErrorMessage("Password must be at least 6 characters long.");
       isValid = false;
     } else {
       setPasswordError(false);
@@ -176,13 +176,13 @@ export default function SignIn(props: { disableCustomTheme?: boolean }) {
               />
             </FormControl>
 
-            <FormControlLabel
+            {/* <FormControlLabel
               control={<Checkbox value="remember" name="remember" color="primary" />}
               label="Remember me"
-            />
+            /> */}
 
             <ForgotPassword open={open} handleClose={handleClose} />
-            <Button type="submit" fullWidth variant="contained">
+            <Button sx={{mt:3}}type="submit" fullWidth variant="contained">
               Sign in
             </Button>
           </Box>

@@ -19,8 +19,7 @@ import { GoogleIcon, FacebookIcon, SitemarkIcon } from "./CustomIcons";
 import axiosInstance from "../../api/axiosInstance";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthProvider";
-import { useSnackbar } from '../../context/SnackbarProvider'
-
+import { useSnackbar } from "../../context/SnackbarProvider";
 
 const Card = styled(MuiCard)(({ theme }) => ({
   display: "flex",
@@ -47,13 +46,13 @@ const SignUpContainer = styled(Stack)(({ theme }) => ({
   padding: theme.spacing(2),
   [theme.breakpoints.up("sm")]: {
     padding: theme.spacing(4),
-  }
+  },
 }));
 
 export default function SignUp(props: { disableCustomTheme?: boolean }) {
-  const { showSnackbar } = useSnackbar()
+  const { showSnackbar } = useSnackbar();
   const { refreshUser } = useAuthContext();
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   const [emailError, setEmailError] = React.useState(false);
   const [emailErrorMessage, setEmailErrorMessage] = React.useState("");
   const [passwordError, setPasswordError] = React.useState(false);
@@ -79,7 +78,7 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
 
     if (!password.value) {
       setPasswordError(true);
-      setPasswordErrorMessage("Password must be at least 6 characters long.");
+      // setPasswordErrorMessage("Password must be at least 6 characters long.");
       isValid = false;
     } else {
       setPasswordError(false);
@@ -103,11 +102,11 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
 
     const form = new FormData(event.currentTarget);
     const name = form.get("name") as string;
-    const email = form.get("email") as string;
+    let email = form.get("email") as string;
+    email = email.trim().toLowerCase();
     const password = form.get("password") as string;
-
-    // run validation before sending
     const isValid = validateInputs();
+
     if (!isValid) return;
 
     try {
@@ -117,26 +116,24 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
         password,
       });
 
-      console.log("Signup successful:", response.data);
-
-      // show success feedback or redirect user
-      showSnackbar('Signed up successfully! Please sign in.')
-      await refreshUser()
-      navigate('/', { replace: true })
-      // navigate('/login') if using react-router
+      showSnackbar("Signed up successfully! Please sign in.");
+      await refreshUser();
+      navigate("/", { replace: true });
     } catch (error: any) {
       if (error.response) {
         console.error("Signup failed:", error.response.data);
-        showSnackbar(error.response.data?.error || 'Signup failed', { severity: 'error' })
+        showSnackbar(error.response.data?.error || "Signup failed", {
+          severity: "error",
+        });
       } else {
         console.error("Network error:", error.message);
-        showSnackbar('Network error', { severity: 'error' })
+        showSnackbar("Network error", { severity: "error" });
       }
     }
   };
 
   return (
-<>
+    <>
       <CssBaseline enableColorScheme />
       <SignUpContainer direction="column" justifyContent="space-between">
         <Card variant="outlined">
@@ -197,15 +194,16 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
                 color={passwordError ? "error" : "primary"}
               />
             </FormControl>
-            <FormControlLabel
+            {/* <FormControlLabel
               control={<Checkbox value="allowExtraEmails" color="primary" />}
               label="I want to receive updates via email."
-            />
+            /> */}
             <Button
               type="submit"
               fullWidth
               variant="contained"
               onClick={validateInputs}
+              sx={{ mt: 3 }}
             >
               Sign up
             </Button>

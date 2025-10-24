@@ -25,8 +25,8 @@ interface ChatPanelProps {
   onTyping: (on: boolean) => void;
   nameMap?: Record<string, string>;
   selfId?: string;
-  panelWidth?: number;         // width on desktop/tablet (default 340)
-  mobileFullScreen?: boolean;  // if true, takes full screen on mobile
+  panelWidth?: number; // width on desktop/tablet (default 340)
+  mobileFullScreen?: boolean; // if true, takes full screen on mobile
 }
 
 export default function ChatPanel({
@@ -53,7 +53,10 @@ export default function ChatPanel({
     const el = taRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const next = Math.min(120, Math.max(baseHeightRef.current || 0, el.scrollHeight));
+    const next = Math.min(
+      120,
+      Math.max(baseHeightRef.current || 0, el.scrollHeight)
+    );
     el.style.height = `${next}px`;
   };
 
@@ -90,7 +93,8 @@ export default function ChatPanel({
       setIsTyping(false);
       onTyping(false);
     }
-    if (taRef.current) taRef.current.style.height = `${baseHeightRef.current || 0}px`;
+    if (taRef.current)
+      taRef.current.style.height = `${baseHeightRef.current || 0}px`;
   }
 
   function handleChange(v: string) {
@@ -105,7 +109,11 @@ export default function ChatPanel({
     }
   }
 
-  const widthStyle = isMdUp ? `${panelWidth}px` : mobileFullScreen ? "100%" : `${panelWidth}px`;
+  const widthStyle = isMdUp
+    ? `${panelWidth}px`
+    : mobileFullScreen
+      ? "100%"
+      : `${panelWidth}px`;
 
   return (
     <Box
@@ -152,7 +160,11 @@ export default function ChatPanel({
       {/* Messages */}
       <Box ref={listRef} sx={{ flex: 1, p: 1, overflowY: "auto" }}>
         {displayMessages.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ px: 1, pt: 1 }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ px: 1, pt: 1 }}
+          >
             Messages will appear here
           </Typography>
         ) : (
@@ -180,20 +192,33 @@ export default function ChatPanel({
                   spacing={0.25}
                   sx={{
                     maxWidth: "78%",
-                    bgcolor: m.isSelf ? "#1976d2" : "#2b2b2e",
+                    background: m.isSelf
+  ? "linear-gradient(135deg, #16a34a 0%, #4ade80 100%)" // green gradient
+  : "linear-gradient(135deg, #1f2937 0%, #374151 100%)", // dark gray gradient
+
+
+
                     color: "#f5f5f5",
                     px: 1.25,
                     py: 0.75,
                     borderRadius: 1.5,
                   }}
                 >
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    spacing={1}
+                  >
                     <Typography variant="caption" sx={{ opacity: 0.85 }}>
                       {m.displayName}
                     </Typography>
                     <Tooltip title={new Date(m.ts).toLocaleTimeString()}>
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      <Typography variant="caption" color="white">
+                        {new Date(m.ts).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </Typography>
                     </Tooltip>
                   </Stack>
@@ -214,8 +239,19 @@ export default function ChatPanel({
 
       {/* Composer */}
       <Divider sx={{ borderColor: "#2a2a2d" }} />
-      <Box sx={{ p: 1, backgroundColor: "#2b2b2e" }}>
-        <Stack direction="row" spacing={1} alignItems="flex-end">
+      <Box sx={{ p: 1, backgroundColor: "#2b2b2e", overflowX: "hidden" }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="flex-end"
+          sx={{
+            width: "100%",
+            maxWidth: "100%",
+            flexWrap: "nowrap",
+            overflow: "hidden",
+            "& > *": { minWidth: 0 },
+          }}
+        >
           <Box
             component="textarea"
             ref={taRef}
@@ -237,6 +273,7 @@ export default function ChatPanel({
             style={{ resize: "none" }}
             sx={{
               flex: 1,
+              minWidth: 0,
               backgroundColor: "#2b2b2e",
               color: "#fff",
               border: "1px solid rgba(255,255,255,0.12)",
@@ -244,17 +281,21 @@ export default function ChatPanel({
               borderRadius: 1,
               px: 1.25,
               py: 0.75,
-              fontSize: 14,
+              fontSize: 16,
               lineHeight: 1.5,
               fontFamily: "inherit",
-              "::placeholder": { color: "#fff", opacity: 0.6 },
               overflowY: "auto",
               maxHeight: 120,
+              WebkitTextSizeAdjust: "100%",
+              "::placeholder": { color: "#fff", opacity: 0.6 },
             }}
           />
-          <IconButton
+
+          <Box
+            component={IconButton}
             onClick={handleSend}
             sx={{
+              flex: "0 0 auto",
               color: "#fff",
               backgroundColor: "#2b2b2e",
               border: "1px solid rgba(255,255,255,0.24)",
@@ -262,7 +303,7 @@ export default function ChatPanel({
             }}
           >
             <SendIcon />
-          </IconButton>
+          </Box>
         </Stack>
       </Box>
     </Box>
