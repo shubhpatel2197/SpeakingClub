@@ -368,6 +368,6 @@ export default function ChatPanel({
         </Stack>
       </Box>
     </Box>
-  );
+  )
 }
 

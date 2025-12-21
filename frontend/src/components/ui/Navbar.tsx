@@ -84,7 +84,7 @@ export default function NavBar() {
               mr: 2,
             }}
           >
-            MyApp
+            SpeakingClub
           </Typography>
 
           <Box sx={{ flex: 1 }} />
