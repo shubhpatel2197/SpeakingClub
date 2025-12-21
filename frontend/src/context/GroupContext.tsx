@@ -82,7 +82,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       try {
         const params: any = { take };
         if (!opts?.reset && cursor) params.cursor = cursor;
-        const res = await axiosInstance.get("/groups", {
+        const res = await axiosInstance.get("/api/groups", {
           params,
           withCredentials: true,
         });

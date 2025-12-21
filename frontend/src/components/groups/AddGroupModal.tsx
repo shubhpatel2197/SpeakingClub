@@ -55,7 +55,7 @@ export default function AddGroupModal({
     }
     setLoading(true);
     try {
-      const res = await axiosInstance.post("/groups", {
+      const res = await axiosInstance.post("/api/groups", {
         name: user?.name || "1",
         description,
         language,

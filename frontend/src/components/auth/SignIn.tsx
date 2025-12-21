@@ -75,7 +75,7 @@ export default function SignIn(props: { disableCustomTheme?: boolean }) {
     const remember = form.get("remember") === "on" || form.get("remember") === "true";
 
     try {
-      const res = await axiosInstance.post("/auth/signin", { email, password, remember });
+      const res = await axiosInstance.post("/api/auth/signin", { email, password, remember });
       showSnackbar('Signed in successfully!')
 
       // refresh global user state (reads /api/user/me using cookie)

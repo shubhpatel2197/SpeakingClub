@@ -127,7 +127,7 @@ export default function GroupCard({
   const handleDelete = async () => {
     setDeleteLoading(true);
     try {
-      await axiosInstance.post(`/groups/${group.id}/delete`, {
+      await axiosInstance.post(`/api/groups/${group.id}/delete`, {
         userId: user?.id,
         withCredentials: true,
       });
