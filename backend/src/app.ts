@@ -24,11 +24,11 @@ app.use(express.json())
 app.use(cookieParser())
 
 // public routes
-app.use('/api/auth', authRoutes)
+app.use('/auth', authRoutes)
 
 // protected routes
-app.use('/api/user', requireAuth(), userRoutes)
-app.use('/api/groups', groupRoutes)
+app.use('/user', requireAuth(), userRoutes)
+app.use('/groups', groupRoutes)
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
