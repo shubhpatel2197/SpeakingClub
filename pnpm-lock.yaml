@@ -109,6 +109,9 @@ importers:
 
   frontend:
     dependencies:
+      '@betterbugs/web-sdk':
+        specifier: ^0.0.38
+        version: 0.0.38(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.2.2)(react@19.2.0)
@@ -297,6 +300,12 @@ packages:
   '@babel/types@7.28.4':
     resolution: {integrity: sha512-bkFqkLhh3pMBUQQkpVgWDWq/lqzc2678eUyDlTBhRqhCHFguYYGM0Efga7tYk4TogG/3x0EEl66/OQ+WGbWB/Q==}
     engines: {node: '>=6.9.0'}
+
+  '@betterbugs/web-sdk@0.0.38':
+    resolution: {integrity: sha512-2TtLrxbTu9W1YrFIT0J+zg+VltuawAue/SDBLh61rqu9QTWOW951xUigFHlj10ORq5/sv/cS1uWHECoJK2mufw==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
 
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
@@ -2812,6 +2821,11 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
+
+  '@betterbugs/web-sdk@0.0.38(react-dom@19.2.0(react@19.2.0))(react@19.2.0)':
+    dependencies:
+      react: 19.2.0
+      react-dom: 19.2.0(react@19.2.0)
 
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
