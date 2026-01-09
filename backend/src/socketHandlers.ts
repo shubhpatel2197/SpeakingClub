@@ -9,7 +9,7 @@ import {
 } from "./mediasoup/roomManager";
 import { removeUserFromGroup, joinGroupCore } from "./services/groupService";
 import prisma from "./lib/prisma";
-import { context } from '@opentelemetry/api';
+import { context, trace } from '@opentelemetry/api';
 import { BUG_SESSION_KEY } from './telementry/context';
 
 type JwtPayload = {
@@ -116,8 +116,17 @@ export function attachSocketServer(io: IOServer) {
       const sessionID = (socket as any)._bugSessionId;
       if (sessionID) {
         const ctx = context.active().setValue(BUG_SESSION_KEY, sessionID);
+        
         context.with(ctx, () => {
+          // 1. Run the original handler (This starts the OTel Span)
           originalOnevent.call(this, packet);
+
+          // 2. NOW try to grab that active span and tag it manually
+          const currentSpan = trace.getSpan(context.active());
+          if (currentSpan) {
+            currentSpan.setAttribute('bug.session_id', sessionID);
+            console.log("Attached ID to Socket Span!"); // Debug log
+          }
         });
       } else {
         originalOnevent.call(this, packet);
