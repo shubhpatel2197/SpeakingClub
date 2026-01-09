@@ -9,6 +9,8 @@ import {
 } from "./mediasoup/roomManager";
 import { removeUserFromGroup, joinGroupCore } from "./services/groupService";
 import prisma from "./lib/prisma";
+import { context } from '@opentelemetry/api';
+import { BUG_SESSION_KEY } from './telementry/context';
 
 type JwtPayload = {
   userId: string;
@@ -91,17 +93,36 @@ function findOwnerOfProducer(io: IOServer, producerId: string) {
 }
 
 export function attachSocketServer(io: IOServer) {
+
   io.use((socket, next) => {
     const s = socket as AuthedSocket;
     const user = getUserFromHandshake(socket);
     if (!user) return next(new Error("unauthorized"));
     s.data.user = user;
+    const sessionID = "SHUBH";
+
+    if (sessionID) {
+      (socket as any)._bugSessionId = sessionID;
+    }
     next();
   });
 
   io.on("connection", (raw) => {
     const socket = raw as AuthedSocket;
     console.log("[SOCKET] connected", socket.id, "user=", socket.data.user);
+
+    const originalOnevent = (socket as any).onevent;
+    (socket as any).onevent = function (packet: any) {
+      const sessionID = (socket as any)._bugSessionId;
+      if (sessionID) {
+        const ctx = context.active().setValue(BUG_SESSION_KEY, sessionID);
+        context.with(ctx, () => {
+          originalOnevent.call(this, packet);
+        });
+      } else {
+        originalOnevent.call(this, packet);
+      }
+    };
 
     socket.on("groups:subscribe", () => {
       socket.join("groups");
