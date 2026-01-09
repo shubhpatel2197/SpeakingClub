@@ -1,144 +1,112 @@
-2026-01-08 14:47:16 +05:30: Auth middleware error PrismaClientInitializationError: 
-2026-01-08 14:47:16 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:47:16 +05:30: 
-2026-01-08 14:47:16 +05:30: 
-2026-01-08 14:47:16 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:47:16 +05:30: 
-2026-01-08 14:47:16 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:47:16 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:47:16 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:47:16 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:47:16 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:47:16 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
-2026-01-08 14:47:16 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:47:16 +05:30:   errorCode: undefined,
-2026-01-08 14:47:16 +05:30:   retryable: undefined
-2026-01-08 14:47:16 +05:30: }
-2026-01-08 14:47:25 +05:30: PrismaClientInitializationError: 
-2026-01-08 14:47:25 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:47:25 +05:30: 
-2026-01-08 14:47:25 +05:30: 
-2026-01-08 14:47:25 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:47:25 +05:30: 
-2026-01-08 14:47:25 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:47:25 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:47:25 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:47:25 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:47:25 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:47:25 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
-2026-01-08 14:47:25 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:47:25 +05:30:   errorCode: undefined,
-2026-01-08 14:47:25 +05:30:   retryable: undefined
-2026-01-08 14:47:25 +05:30: }
-2026-01-08 14:47:25 +05:30: PrismaClientInitializationError: 
-2026-01-08 14:47:25 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:47:25 +05:30: 
-2026-01-08 14:47:25 +05:30: 
-2026-01-08 14:47:25 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:47:25 +05:30: 
-2026-01-08 14:47:25 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:47:25 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:47:25 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:47:25 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:47:25 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:47:25 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
-2026-01-08 14:47:25 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:47:25 +05:30:   errorCode: undefined,
-2026-01-08 14:47:25 +05:30:   retryable: undefined
-2026-01-08 14:47:25 +05:30: }
-2026-01-08 14:47:52 +05:30: Auth middleware error PrismaClientInitializationError: 
-2026-01-08 14:47:52 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:47:52 +05:30: 
-2026-01-08 14:47:52 +05:30: 
-2026-01-08 14:47:52 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:47:52 +05:30: 
-2026-01-08 14:47:52 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:47:52 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:47:52 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:47:52 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:47:52 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:47:52 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
-2026-01-08 14:47:52 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:47:52 +05:30:   errorCode: undefined,
-2026-01-08 14:47:52 +05:30:   retryable: undefined
-2026-01-08 14:47:52 +05:30: }
-2026-01-08 14:48:04 +05:30: PrismaClientInitializationError: 
-2026-01-08 14:48:04 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:48:04 +05:30: 
-2026-01-08 14:48:04 +05:30: 
-2026-01-08 14:48:04 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:48:04 +05:30: 
-2026-01-08 14:48:04 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:48:04 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:48:04 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:48:04 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:48:04 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:48:04 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
-2026-01-08 14:48:04 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:48:04 +05:30:   errorCode: undefined,
-2026-01-08 14:48:04 +05:30:   retryable: undefined
-2026-01-08 14:48:04 +05:30: }
-2026-01-08 14:50:35 +05:30: PrismaClientInitializationError: 
-2026-01-08 14:50:35 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:50:35 +05:30: 
-2026-01-08 14:50:35 +05:30: 
-2026-01-08 14:50:35 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:50:35 +05:30: 
-2026-01-08 14:50:35 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:50:35 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:50:35 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:50:35 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:50:35 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:50:35 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
-2026-01-08 14:50:35 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:50:35 +05:30:   errorCode: undefined,
-2026-01-08 14:50:35 +05:30:   retryable: undefined
-2026-01-08 14:50:35 +05:30: }
-2026-01-08 14:51:19 +05:30: PrismaClientInitializationError: 
-2026-01-08 14:51:19 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:51:19 +05:30: 
-2026-01-08 14:51:19 +05:30: 
-2026-01-08 14:51:19 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:51:19 +05:30: 
-2026-01-08 14:51:19 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:51:19 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:51:19 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:51:19 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:51:19 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:51:19 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
-2026-01-08 14:51:19 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:51:19 +05:30:   errorCode: undefined,
-2026-01-08 14:51:19 +05:30:   retryable: undefined
-2026-01-08 14:51:19 +05:30: }
-2026-01-08 14:51:50 +05:30: Auth middleware error PrismaClientInitializationError: 
-2026-01-08 14:51:50 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:51:50 +05:30: 
-2026-01-08 14:51:50 +05:30: 
-2026-01-08 14:51:50 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:51:50 +05:30: 
-2026-01-08 14:51:50 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:51:50 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:51:50 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:51:50 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:51:50 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:51:50 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
-2026-01-08 14:51:50 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:51:50 +05:30:   errorCode: undefined,
-2026-01-08 14:51:50 +05:30:   retryable: undefined
-2026-01-08 14:51:50 +05:30: }
-2026-01-08 14:53:57 +05:30: PrismaClientInitializationError: 
-2026-01-08 14:53:57 +05:30: Invalid `prisma.user.findUnique()` invocation:
-2026-01-08 14:53:57 +05:30: 
-2026-01-08 14:53:57 +05:30: 
-2026-01-08 14:53:57 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
-2026-01-08 14:53:57 +05:30: 
-2026-01-08 14:53:57 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
-2026-01-08 14:53:57 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
-2026-01-08 14:53:57 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
-2026-01-08 14:53:57 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
-2026-01-08 14:53:57 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
-2026-01-08 14:53:57 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
-2026-01-08 14:53:57 +05:30:   clientVersion: '6.17.1',
-2026-01-08 14:53:57 +05:30:   errorCode: undefined,
-2026-01-08 14:53:57 +05:30:   retryable: undefined
-2026-01-08 14:53:57 +05:30: }
+2026-01-09 11:25:24 +05:30: PrismaClientInitializationError: 
+2026-01-09 11:25:24 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:24 +05:30: 
+2026-01-09 11:25:24 +05:30: 
+2026-01-09 11:25:24 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:24 +05:30: 
+2026-01-09 11:25:24 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:24 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:24 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:24 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:24 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:24 +05:30:     at async /Users/shubh/Project-1/backend/dist/routes/auth.js:61:22 {
+2026-01-09 11:25:24 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:24 +05:30:   errorCode: undefined,
+2026-01-09 11:25:24 +05:30:   retryable: undefined
+2026-01-09 11:25:24 +05:30: }
+2026-01-09 11:25:38 +05:30: Auth middleware error PrismaClientInitializationError: 
+2026-01-09 11:25:38 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:38 +05:30: 
+2026-01-09 11:25:38 +05:30: 
+2026-01-09 11:25:38 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:38 +05:30: 
+2026-01-09 11:25:38 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:38 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:38 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:38 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:38 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:38 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
+2026-01-09 11:25:38 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:38 +05:30:   errorCode: undefined,
+2026-01-09 11:25:38 +05:30:   retryable: undefined
+2026-01-09 11:25:38 +05:30: }
+2026-01-09 11:25:42 +05:30: Auth middleware error PrismaClientInitializationError: 
+2026-01-09 11:25:42 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:42 +05:30: 
+2026-01-09 11:25:42 +05:30: 
+2026-01-09 11:25:42 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:42 +05:30: 
+2026-01-09 11:25:42 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:42 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:42 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:42 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:42 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:42 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
+2026-01-09 11:25:42 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:42 +05:30:   errorCode: undefined,
+2026-01-09 11:25:42 +05:30:   retryable: undefined
+2026-01-09 11:25:42 +05:30: }
+2026-01-09 11:25:44 +05:30: Auth middleware error PrismaClientInitializationError: 
+2026-01-09 11:25:44 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:44 +05:30: 
+2026-01-09 11:25:44 +05:30: 
+2026-01-09 11:25:44 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:44 +05:30: 
+2026-01-09 11:25:44 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:44 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:44 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:44 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:44 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:44 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
+2026-01-09 11:25:44 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:44 +05:30:   errorCode: undefined,
+2026-01-09 11:25:44 +05:30:   retryable: undefined
+2026-01-09 11:25:44 +05:30: }
+2026-01-09 11:25:45 +05:30: Auth middleware error PrismaClientInitializationError: 
+2026-01-09 11:25:45 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:45 +05:30: 
+2026-01-09 11:25:45 +05:30: 
+2026-01-09 11:25:45 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:45 +05:30: 
+2026-01-09 11:25:45 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:45 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:45 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:45 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:45 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:45 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
+2026-01-09 11:25:45 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:45 +05:30:   errorCode: undefined,
+2026-01-09 11:25:45 +05:30:   retryable: undefined
+2026-01-09 11:25:45 +05:30: }
+2026-01-09 11:25:46 +05:30: Auth middleware error PrismaClientInitializationError: 
+2026-01-09 11:25:46 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:46 +05:30: 
+2026-01-09 11:25:46 +05:30: 
+2026-01-09 11:25:46 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:46 +05:30: 
+2026-01-09 11:25:46 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:46 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:46 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:46 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:46 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:46 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
+2026-01-09 11:25:46 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:46 +05:30:   errorCode: undefined,
+2026-01-09 11:25:46 +05:30:   retryable: undefined
+2026-01-09 11:25:46 +05:30: }
+2026-01-09 11:25:47 +05:30: Auth middleware error PrismaClientInitializationError: 
+2026-01-09 11:25:47 +05:30: Invalid `prisma.user.findUnique()` invocation:
+2026-01-09 11:25:47 +05:30: 
+2026-01-09 11:25:47 +05:30: 
+2026-01-09 11:25:47 +05:30: Can't reach database server at `db.dlfrideaeicouczfqton.supabase.co:5432`
+2026-01-09 11:25:47 +05:30: 
+2026-01-09 11:25:47 +05:30: Please make sure your database server is running at `db.dlfrideaeicouczfqton.supabase.co:5432`.
+2026-01-09 11:25:47 +05:30:     at ei.handleRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:7568)
+2026-01-09 11:25:47 +05:30:     at ei.handleAndLogRequestError (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6593)
+2026-01-09 11:25:47 +05:30:     at ei.request (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:121:6300)
+2026-01-09 11:25:47 +05:30:     at async a (/Users/shubh/Project-1/node_modules/.pnpm/@prisma+client@6.17.1_prisma@6.17.1_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/runtime/library.js:130:9551)
+2026-01-09 11:25:47 +05:30:     at async /Users/shubh/Project-1/backend/dist/middleware/auth.js:39:30 {
+2026-01-09 11:25:47 +05:30:   clientVersion: '6.17.1',
+2026-01-09 11:25:47 +05:30:   errorCode: undefined,
+2026-01-09 11:25:47 +05:30:   retryable: undefined
+2026-01-09 11:25:47 +05:30: }
