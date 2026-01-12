@@ -9,8 +9,6 @@ import {
 } from "./mediasoup/roomManager";
 import { removeUserFromGroup, joinGroupCore } from "./services/groupService";
 import prisma from "./lib/prisma";
-import { context, trace } from '@opentelemetry/api';
-import { BUG_SESSION_KEY } from './telementry/context';
 
 type JwtPayload = {
   userId: string;
@@ -99,11 +97,6 @@ export function attachSocketServer(io: IOServer) {
     const user = getUserFromHandshake(socket);
     if (!user) return next(new Error("unauthorized"));
     s.data.user = user;
-    const sessionID = "SHUBH";
-
-    if (sessionID) {
-      (socket as any)._bugSessionId = sessionID;
-    }
     next();
   });
 
@@ -111,27 +104,6 @@ export function attachSocketServer(io: IOServer) {
     const socket = raw as AuthedSocket;
     console.log("[SOCKET] connected", socket.id, "user=", socket.data.user);
 
-    const originalOnevent = (socket as any).onevent;
-    (socket as any).onevent = function (packet: any) {
-      const sessionID = (socket as any)._bugSessionId;
-      if (sessionID) {
-        const ctx = context.active().setValue(BUG_SESSION_KEY, sessionID);
-        
-        context.with(ctx, () => {
-          // 1. Run the original handler (This starts the OTel Span)
-          originalOnevent.call(this, packet);
-
-          // 2. NOW try to grab that active span and tag it manually
-          const currentSpan = trace.getSpan(context.active());
-          if (currentSpan) {
-            currentSpan.setAttribute('bug.session_id', sessionID);
-            console.log("Attached ID to Socket Span!"); // Debug log
-          }
-        });
-      } else {
-        originalOnevent.call(this, packet);
-      }
-    };
 
     socket.on("groups:subscribe", () => {
       socket.join("groups");
