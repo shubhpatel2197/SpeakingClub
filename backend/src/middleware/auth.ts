@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import prisma from '../lib/prisma'
 import { IncomingMessage } from 'http'
+import Logger from '../logger'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
 
@@ -19,6 +20,8 @@ type AuthOptions = {
  */
 export function requireAuth(options: AuthOptions = { requireUser: true }) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    const logger = new Logger();
+    logger.log('info', 'hello world')
     try {
       const token =
         req.cookies?.token ||
