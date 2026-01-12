@@ -1,4 +1,4 @@
-import tracer from 'dd-trace';
+import { tracer } from './index';
 import  formats from 'dd-trace/ext/formats.js';
 
 export default class Logger {

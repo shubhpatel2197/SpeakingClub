@@ -5,6 +5,10 @@ import app from './app'
 import { Server as IOServer } from 'socket.io'
 import { attachSocketServer } from './socketHandlers'
 
+export const tracer = require('dd-trace').init({
+  logInjection: false
+});
+
 const PORT = Number(process.env.PORT || 4000)
 const HOST = '0.0.0.0'
 
