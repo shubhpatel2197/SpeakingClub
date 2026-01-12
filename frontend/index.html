@@ -16,6 +16,27 @@
     mode: 'production',
   });
 </script> -->
+<script
+src="https://cdnjs.middleware.io/browser/libs/0.0.2/middleware-rum.min.js"
+type="text/javascript"
+crossorigin="anonymous">
+</script>
+<script>
+  if (window.Middleware) {
+    Middleware.track({
+      projectName: "my-application",
+      serviceName: "mw-application",
+      accountKey: "your-account-token",
+      target: "https://<UID>.middleware.io",
+      env: "production",
+      defaultAttributes: {
+        "app.version": "1.0.0"
+      }
+      // See "Configuration Object" below for all options
+    });
+  }
+</script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
