@@ -118,6 +118,12 @@ importers:
       '@betterbugs/web-sdk':
         specifier: ^0.0.38
         version: 0.0.38(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      '@datadog/browser-rum':
+        specifier: ^6.25.3
+        version: 6.25.3
+      '@datadog/browser-rum-react':
+        specifier: ^6.25.3
+        version: 6.25.3(@datadog/browser-rum@6.25.3)(react-router-dom@7.9.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-router@7.9.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.2.2)(react@19.2.0)
@@ -316,6 +322,40 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@datadog/browser-core@6.25.3':
+    resolution: {integrity: sha512-rBth2l89RTxsKtZObdOiFKjt+Ii+Uar+siaP4n9CPP8tCtMyAwrzrfF9apiyUiGUP8RsP9t49bcR4qtlRG+xZg==}
+
+  '@datadog/browser-rum-core@6.25.3':
+    resolution: {integrity: sha512-cF/n3GcGMdVJ7d6xMtYOmqC0GVKsbkVVtj6wYPSGU14ov84lKFMeQsbApRNsemQCsjg0CmAwx+rh0tIe+8Meag==}
+
+  '@datadog/browser-rum-react@6.25.3':
+    resolution: {integrity: sha512-Xj7BNFQ/EYJH+RxQryMwxSmrdvAbGgipAsBkVPCda8lZPGvJuoQ6uf+LPJEvbTdAnrtqK3z/WwWkH1ROK+g0PA==}
+    peerDependencies:
+      '@datadog/browser-rum': '*'
+      '@datadog/browser-rum-slim': '*'
+      react: 18 || 19
+      react-router: 6 || 7
+      react-router-dom: 6 || 7
+    peerDependenciesMeta:
+      '@datadog/browser-rum':
+        optional: true
+      '@datadog/browser-rum-slim':
+        optional: true
+      react:
+        optional: true
+      react-router:
+        optional: true
+      react-router-dom:
+        optional: true
+
+  '@datadog/browser-rum@6.25.3':
+    resolution: {integrity: sha512-B03qeUNE+eHUbSv7SynSdbMUpI+ibVuDe2sMQi/hX/vi8NYEDZZOf+iM+GihJgT+ZeN38xku2AfNr8kJlYnQXQ==}
+    peerDependencies:
+      '@datadog/browser-logs': 6.25.3
+    peerDependenciesMeta:
+      '@datadog/browser-logs':
+        optional: true
 
   '@emotion/babel-plugin@11.13.5':
     resolution: {integrity: sha512-pxHCpT2ex+0q+HH91/zsdHkw/lXd468DIN2zvfvLtPKLLMo6gQj7oLObq8PhkrxOZb/gGCq03S3Z7PDhS8pduQ==}
@@ -3455,6 +3495,27 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  '@datadog/browser-core@6.25.3': {}
+
+  '@datadog/browser-rum-core@6.25.3':
+    dependencies:
+      '@datadog/browser-core': 6.25.3
+
+  '@datadog/browser-rum-react@6.25.3(@datadog/browser-rum@6.25.3)(react-router-dom@7.9.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-router@7.9.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)':
+    dependencies:
+      '@datadog/browser-core': 6.25.3
+      '@datadog/browser-rum-core': 6.25.3
+    optionalDependencies:
+      '@datadog/browser-rum': 6.25.3
+      react: 19.2.0
+      react-router: 7.9.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      react-router-dom: 7.9.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+
+  '@datadog/browser-rum@6.25.3':
+    dependencies:
+      '@datadog/browser-core': 6.25.3
+      '@datadog/browser-rum-core': 6.25.3
 
   '@emotion/babel-plugin@11.13.5':
     dependencies:
