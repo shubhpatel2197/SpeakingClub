@@ -5,10 +5,6 @@ import app from './app'
 import { Server as IOServer } from 'socket.io'
 import { attachSocketServer } from './socketHandlers'
 
-export const tracer = require('dd-trace').init({
-  logInjection: false
-});
-
 const PORT = Number(process.env.PORT || 4000)
 const HOST = '0.0.0.0'
 
@@ -16,7 +12,7 @@ const server = http.createServer(app)
 
 export const io = new IOServer(server, {
     path: '/socket.io',
-    pingInterval: 25000,  // default 25000 is ok; keep explicit
+    pingInterval: 25000, 
     pingTimeout: 30000,
     cors: {
       origin(_o, cb) {
