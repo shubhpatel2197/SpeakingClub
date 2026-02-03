@@ -9,29 +9,40 @@
   <body>
     <div id="root"></div>
 
-<!-- <script src="https://cdn.betterbugs.io/scripts/latest/index.js"></script>
+    <!-- <script src="https://cdn.betterbugs.io/scripts/latest/index.js"></script>
 <script>
   const bb = new window.Betterbugs({
     apiKey: "5281eb68f053fbef9bd4190873942856",
-    mode: 'production',
+    mode: 'development',
+    emailFieldLabel: 'Email',
+    styles: {
+    theme: 'dark',
+  },
   });
 </script> -->
-<script src="https://cdnjs.middleware.io/browser/libs/0.0.2/middleware-rum.min.js" type="text/javascript" crossorigin="anonymous"></script>
 
-<script>
-  if (window.Middleware){
-    Middleware.track({
-      serviceName:"project1",
-      projectName:"project1",
-      accountKey:"jqmeoihorrzupyjkqfgmqsbuwoxwvlnnkirh",
-      target: "https://oeeko.middleware.io",
-      tracePropagationTargets: [/.*/],
-      defaultAttributes: {
-        "app.version": "1.0.0",
-      },
-    })
-  }
-</script>
+    <!-- <script src="http://localhost:9000/index.js"></script>
+    <script>
+      window.bb = new window.Betterbugs({
+        apiKey: "17b5237ad290afd68774ddef12612476",
+        mode: "development",
+        emailFieldLabel: "Email",
+        styles: {
+          theme: "light",
+          primaryColor: "purple",
+          primaryTextColor: "#ffffff",
+          secondaryColor: "orange",
+          secondaryTextColor: "green",
+          textColor: "brown",
+          mutedTextColor: "black",
+          inputBgColor: "grey",
+          fontFamily: "Bungee",
+        },
+        maxRecordingMinutes: 0.1,
+        recordType: 'domRecord',
+      });
+    </script> -->
+
 
     <script type="module" src="/src/main.tsx"></script>
   </body>

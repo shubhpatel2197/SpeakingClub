@@ -25,7 +25,26 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+
 function App() {
+
+  // let isLight = false;
+  //   setInterval(() => {
+  //  console.log(isLight);
+
+  //   window.bb.setStyles({
+  //     theme: isLight ? "light" : "dark",
+  //     fontFamily: isLight? "nanumgothic" : "ubuntu",
+  //     textColor: isLight? "black" : "white",
+  //     primaryColor: isLight? "#19d22c" : "#d2c019",
+  //     inputBgColor: "green",
+  //   });
+  //   isLight ? window.bb.show(): window.bb.hide();
+  //   isLight = !isLight;
+  // }, 5000);
+
+    // window.bb.captureScreenshot();
+
   return (
     <div className="app">
       

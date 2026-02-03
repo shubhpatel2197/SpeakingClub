@@ -22,6 +22,21 @@ import { GroupsProvider } from './context/GroupContext'
 //   // plugins: [reactPlugin({ router: true })],
 // });
 
+import * as Sentry from "@sentry/react";
+
+
+Sentry.init({
+  dsn: "https://113a98c2b0bd8dcfe99ef51d7a13e2cd@o4510820456595456.ingest.us.sentry.io/4510820528816128",
+  integrations: [Sentry.browserTracingIntegration()],
+
+  // Set tracesSampleRate to 1.0 to capture 100%
+  // of transactions for performance monitoring.
+  // We recommend adjusting this value in production
+  tracesSampleRate: 1.0,
+  // Set `tracePropagationTargets` to control for which URLs distributed tracing should be enabled
+  tracePropagationTargets: ["localhost", /^https:\/\/yourserver\.io\/api/],
+});
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   // <React.StrictMode>
     <ColorModeProvider>

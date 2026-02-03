@@ -9,7 +9,7 @@ const router = Router()
 router.get('/', listGroups)
 
 // create group (auth) - user must not be member or owner already
-router.post('/', requireAuth(), createGroup)
+router.post('/create', requireAuth(), createGroup)
 
 // join group (auth)
 router.post('/:id/join', requireAuth(), joinGroup)

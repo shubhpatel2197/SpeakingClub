@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await axiosInstance.post("/auth/signout");
+      await axiosInstance.post("/api/auth/signout");
     } catch (err) {
       // ignore network errors on signout
       // console.error(err)
