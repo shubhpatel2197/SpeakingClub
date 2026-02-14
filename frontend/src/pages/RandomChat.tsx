@@ -62,16 +62,11 @@ export default function RandomChat() {
       chatDuration={rc.chatDuration}
       onNext={rc.next}
       onLeave={rc.leave}
-      toggleMic={rc.toggleMic}
-      micOn={rc.micOn}
       messages={rc.messages}
       sendChat={rc.sendChat}
       setTyping={rc.setTyping}
       participants={rc.participants}
       selfId={user?.id}
-      isSharingScreen={rc.isSharingScreen}
-      screenSharerId={rc.screenSharerId}
-      screenSharerName={rc.screenSharerName}
     />
   );
 }

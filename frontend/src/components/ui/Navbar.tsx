@@ -1,25 +1,9 @@
 import React from 'react';
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  IconButton,
-  Box,
-  Container,
-  Menu,
-  MenuItem,
-  useMediaQuery,
-  Link,
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import MenuIcon from '@mui/icons-material/Menu';
-import ShuffleIcon from '@mui/icons-material/Shuffle';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthProvider';
 import { useColorMode } from '../../context/ColorModeContext';
 import { Button } from './button';
-import { Menu, X, Sun, Moon } from 'lucide-react';
+import { Menu, X, Sun, Moon, Shuffle } from 'lucide-react';
 
 export default function NavBar() {
   const { user, loading, signOut } = useAuthContext();
@@ -44,35 +28,29 @@ export default function NavBar() {
             className="font-display text-xl font-bold gradient-text hover:opacity-80 transition-opacity no-underline"
           >
             SpeakingClub
-          </Typography>
+          </RouterLink>
 
-          {user && (
-            <Button
-              component={RouterLink}
-              to="/random"
-              startIcon={<ShuffleIcon sx={{ fontSize: 18 }} />}
-              sx={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                borderRadius: 50,
-                px: 2,
-                py: 0.5,
-                textTransform: 'none',
-                fontSize: '0.85rem',
-                boxShadow: '0 2px 12px rgba(102, 126, 234, 0.3)',
-                display: { xs: 'none', md: 'inline-flex' },
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
-                  boxShadow: '0 4px 20px rgba(102, 126, 234, 0.45)',
-                },
-              }}
+          {/* Desktop nav items */}
+          <div className="hidden md:flex items-center gap-3">
+            {user && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => navigate('/random')}
+                className="rounded-full"
+              >
+                <Shuffle className="w-4 h-4 mr-1" />
+                Random Chat
+              </Button>
+            )}
+
+            <button
+              onClick={toggleColorMode}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors text-foreground/70"
+              aria-label="Toggle theme"
             >
-              Random Chat
-            </Button>
-          )}
-
-          <Box sx={{ flex: 1 }} />
+              {mode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
 
             {loading ? (
               <span className="text-sm text-muted-foreground">Loading...</span>
@@ -128,6 +106,15 @@ export default function NavBar() {
                 <p className="text-sm font-medium text-foreground/80 truncate">
                   {user.name ?? user.email}
                 </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => { setMenuOpen(false); navigate('/random'); }}
+                >
+                  <Shuffle className="w-4 h-4 mr-2" />
+                  Random Chat
+                </Button>
                 <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleSignOut}>
                   Sign out
                 </Button>
@@ -150,82 +137,11 @@ export default function NavBar() {
                 >
                   Sign up
                 </Button>
-              </Box>
-            )
-          ) : (
-            // Mobile
-            <Box>
-              {user && (
-                <Typography
-                  variant="body2"
-                  sx={{
-                    maxWidth: 140,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: 'inline-block',
-                    mr: 1,
-                    color: textColor,
-                  }}
-                  title={user?.name || user?.email || ''}
-                >
-                  {user?.name ?? user?.email}
-                </Typography>
-              )}
-              <IconButton
-                edge="end"
-                aria-label="menu"
-                onClick={handleMenuOpen}
-                sx={{ color: textColor }}
-              >
-                <MenuIcon />
-              </IconButton>
-              <Menu
-                anchorEl={anchorEl}
-                open={open}
-                onClose={handleMenuClose}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                keepMounted
-              >
-                {user ? (
-                  <>
-                    <MenuItem disabled>{user.name ?? user.email}</MenuItem>
-                    <MenuItem
-                      onClick={() => {
-                        handleMenuClose();
-                        navigate('/random');
-                      }}
-                    >
-                      Random Chat
-                    </MenuItem>
-                    <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
-                  </>
-                ) : (
-                  <>
-                    <MenuItem
-                      onClick={() => {
-                        handleMenuClose();
-                        navigate('/signin');
-                      }}
-                    >
-                      Sign in
-                    </MenuItem>
-                    <MenuItem
-                      onClick={() => {
-                        handleMenuClose();
-                        navigate('/signup');
-                      }}
-                    >
-                      Sign up
-                    </MenuItem>
-                  </>
-                )}
-              </Menu>
-            </Box>
-          )}
-        </Toolbar>
-      </Container>
-    </AppBar>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </header>
   );
 }

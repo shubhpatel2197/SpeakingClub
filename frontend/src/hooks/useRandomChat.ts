@@ -58,8 +58,8 @@ export function useRandomChat() {
         setChatDuration((prev) => prev + 1);
       }, 1000);
 
-      // Join the mediasoup room for audio/video/data
-      mediasoup.joinRoom(roomId);
+      // Join the mediasoup room for audio/video/data, reusing the same socket
+      mediasoup.joinRoom(roomId, s);
     });
 
     s.on("randomChat:waiting", () => {
@@ -205,15 +205,10 @@ export function useRandomChat() {
     cancelSearch,
     next,
     leave,
-    // Forward mediasoup controls
-    toggleMic: mediasoup.toggleMic,
-    micOn: mediasoup.micOn,
+    // Forward chat controls from mediasoup data channel
     messages: mediasoup.messages,
     sendChat: mediasoup.sendChat,
     setTyping: mediasoup.setTyping,
     participants: mediasoup.participants,
-    isSharingScreen: mediasoup.isSharingScreen,
-    screenSharerId: mediasoup.screenSharerId,
-    screenSharerName: mediasoup.screenSharerName,
   };
 }

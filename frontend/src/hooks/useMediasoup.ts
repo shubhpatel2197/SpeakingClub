@@ -25,6 +25,7 @@ export function useMediasoup() {
   const navigate = useNavigate(); // ok to keep
 
   const socketRef = useRef<Socket | null>(null);
+  const externalSocketRef = useRef<boolean>(false);
   const myPeerIdRef = useRef<string | null>(null);
 
   const deviceRef = useRef<Device | null>(null);
@@ -361,10 +362,13 @@ export function useMediasoup() {
 
     deviceRef.current = null;
 
-    try {
-      socketRef.current?.disconnect();
-    } catch {}
+    if (!externalSocketRef.current) {
+      try {
+        socketRef.current?.disconnect();
+      } catch {}
+    }
     socketRef.current = null;
+    externalSocketRef.current = false;
 
     myPeerIdRef.current = null;
     peersRef.current = {};
@@ -502,9 +506,11 @@ export function useMediasoup() {
     }
   }, [consumeProducer]);
 
-  /** Join room and wire all events */
+  /** Join room and wire all events.
+   *  If an existing socket is passed, reuse it instead of creating a new one.
+   */
   const joinRoom = useCallback(
-    async (roomId: string) => {
+    async (roomId: string, existingSocket?: Socket) => {
       if (socketRef.current) return;
       currentRoomIdRef.current = roomId;
 
@@ -522,18 +528,26 @@ export function useMediasoup() {
         throw err;
       }
 
-      const socket = io("/", {
-        path: "/socket.io",
-        transports: ["websocket", "polling"],
-        withCredentials: true,
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 500,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-      });
+      let socket: Socket;
+      if (existingSocket) {
+        socket = existingSocket;
+        externalSocketRef.current = true;
+      } else {
+        socket = io("/", {
+          path: "/socket.io",
+          transports: ["websocket", "polling"],
+          withCredentials: true,
+          reconnection: true,
+          reconnectionAttempts: 10,
+          reconnectionDelay: 500,
+          reconnectionDelayMax: 5000,
+          timeout: 20000,
+        });
+        externalSocketRef.current = false;
+      }
       socketRef.current = socket;
 
+      myPeerIdRef.current = socket.id as string || null;
       socket.on("connect", () => {
         myPeerIdRef.current = socket.id as string;
       });
