@@ -71,6 +71,7 @@ export async function createGroup(req: Request, res: Response) {
  * List public groups with optional filters
  */
 export async function listGroups(req: Request, res: Response) {
+  console.log("Listing")
   const { language, level, take = 20, cursor } = req.query;
   const where: any = { is_public: true };
   if (language) where.language = String(language);

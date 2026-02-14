@@ -1,37 +1,33 @@
 import React from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
-  Box,
-  Button,
-  Modal,
-  Backdrop,
-  Fade,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Typography,
-  Stack,
-} from "@mui/material";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 import axiosInstance from "../../api/axiosInstance";
 import { useSnackbar } from "../../context/SnackbarProvider";
-import { useAuthContext } from '../../context/AuthProvider'
+import { useAuthContext } from "../../context/AuthProvider";
 
-const modalStyle = {
-  position: "absolute" as const,
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: 400,
-  bgcolor: "background.paper",
-  borderRadius: 3,
-  boxShadow: 24,
-  p: 4,
-  outline: "none",
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-};
+const languages = [
+  { value: "ENGLISH", label: "English" },
+  { value: "HINDI", label: "Hindi" },
+  { value: "GUJARATI", label: "Gujarati" },
+  { value: "SPANISH", label: "Spanish" },
+  { value: "FRENCH", label: "French" },
+];
+
+const levels = [
+  { value: "BEGINNER", label: "Beginner" },
+  { value: "INTERMEDIATE", label: "Intermediate" },
+  { value: "ADVANCED", label: "Advanced" },
+  { value: "NATIVE", label: "Native" },
+];
+
+const memberCounts = [2, 3, 4];
 
 export default function AddGroupModal({
   open,
@@ -40,7 +36,7 @@ export default function AddGroupModal({
   open: boolean;
   handleClose: () => void;
 }) {
-  const {user} = useAuthContext();
+  const { user } = useAuthContext();
   const { showSnackbar } = useSnackbar();
   const [description, setDescription] = React.useState("Anything");
   const [language, setLanguage] = React.useState("GUJARATI");
@@ -62,19 +58,13 @@ export default function AddGroupModal({
         level,
         max_members: Number(maxMembers),
       });
-    
+
       showSnackbar("Group created successfully!");
       handleClose();
 
       const roomUrl = `/room/${res.data.group.id}`;
-      
       window.open(roomUrl, "_blank", "noopener,noreferrer");
-      // setDescription("");
-      // setLanguage("");
-      // setLevel("");
-      // setMaxMembers("");
     } catch (err: any) {
-      console.error(err);
       showSnackbar(err?.response?.data?.message || "Failed to create group", {
         severity: "error",
       });
@@ -84,86 +74,78 @@ export default function AddGroupModal({
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      closeAfterTransition
-      slots={{ backdrop: Backdrop }}
-      slotProps={{ backdrop: { timeout: 300 } }}
-      sx={{ marginBottom: 30 }}
-    >
-      <Fade in={open}>
-        <Box sx={modalStyle}>
-          <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
-            Create a Group
-          </Typography>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="gradient-text text-2xl">Create a Group</DialogTitle>
+        </DialogHeader>
 
-          <TextField
-            label="Description"
-            variant="outlined"
-            rows={3}
-            fullWidth
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+        <div className="flex flex-col gap-4 mt-4">
+          <div className="space-y-2">
+            <Label htmlFor="group-desc">Description</Label>
+            <Input
+              id="group-desc"
+              placeholder="What will you talk about?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
 
-          <Stack direction="row" spacing={2}>
-            <FormControl fullWidth>
-              <InputLabel>Language</InputLabel>
-              <Select
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="language">Language</Label>
+              <select
+                id="language"
                 value={language}
-                label="Language"
                 onChange={(e) => setLanguage(e.target.value)}
+                className="flex h-11 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 appearance-none cursor-pointer"
               >
-                <MenuItem value="ENGLISH">English</MenuItem>
-                <MenuItem value="HINDI">Hindi</MenuItem>
-                <MenuItem value="GUJARATI">Gujarati</MenuItem>
-                <MenuItem value="SPANISH">Spanish</MenuItem>
-                <MenuItem value="FRENCH">French</MenuItem>
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel>No. of people</InputLabel>
-              <Select
-                value={maxMembers}
-                label="No. of people"
-                onChange={(e) => setMaxMembers(e.target.value)}
-              >
-                {[2,3,4].map((n) => (
-                  <MenuItem key={n} value={n}>
-                    {n}
-                  </MenuItem>
+                {languages.map((l) => (
+                  <option key={l.value} value={l.value} className="bg-popover text-foreground">
+                    {l.label}
+                  </option>
                 ))}
-              </Select>
-            </FormControl>
-          </Stack>
+              </select>
+            </div>
 
-          <FormControl fullWidth>
-            <InputLabel>Level</InputLabel>
-            <Select
+            <div className="space-y-2">
+              <Label htmlFor="max-members">People</Label>
+              <select
+                id="max-members"
+                value={maxMembers}
+                onChange={(e) => setMaxMembers(e.target.value)}
+                className="flex h-11 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 appearance-none cursor-pointer"
+              >
+                {memberCounts.map((n) => (
+                  <option key={n} value={n} className="bg-popover text-foreground">
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="level">Level</Label>
+            <select
+              id="level"
               value={level}
-              label="Level"
               onChange={(e) => setLevel(e.target.value)}
+              className="flex h-11 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 appearance-none cursor-pointer"
             >
-              <MenuItem value="BEGINNER">Beginner</MenuItem>
-              <MenuItem value="INTERMEDIATE">Intermediate</MenuItem>
-              <MenuItem value="ADVANCED">Advanced</MenuItem>
-              <MenuItem value="NATIVE">Native</MenuItem>
-            </Select>
-          </FormControl>
+              {levels.map((l) => (
+                <option key={l.value} value={l.value} className="bg-popover text-foreground">
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleCreate}
-            disabled={loading}
-            sx={{ mt: 1 }}
-          >
+          <Button onClick={handleCreate} disabled={loading} className="mt-2">
             {loading ? "Creating..." : "Create"}
           </Button>
-        </Box>
-      </Fade>
-    </Modal>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

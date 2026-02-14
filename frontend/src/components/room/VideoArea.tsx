@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Box, IconButton, Tooltip } from "@mui/material";
-import FullscreenIcon from "@mui/icons-material/Fullscreen";
-import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
+import { Maximize, Minimize } from "lucide-react";
 
 type Props = {
   isSharingScreen: boolean;
   screenSharerId: string | null;
   screenSharerName?: string | null;
-  chatWidth?: number; // default 340
+  chatWidth?: number;
 };
-
 
 export default function VideoArea({
   isSharingScreen,
@@ -36,7 +33,6 @@ export default function VideoArea({
         setIsStageFullscreen(true);
         return;
       }
-
       if (container?.requestFullscreen) {
         await container.requestFullscreen();
         return;
@@ -50,7 +46,7 @@ export default function VideoArea({
         await anyContainer.msRequestFullscreen();
         return;
       }
-    } catch {}
+    } catch { }
   };
 
   const exitFullscreen = async () => {
@@ -68,7 +64,7 @@ export default function VideoArea({
         await anyDoc.msExitFullscreen?.();
         return;
       }
-    } catch {}
+    } catch { }
   };
 
   const toggleFullscreen = async () => {
@@ -119,105 +115,44 @@ export default function VideoArea({
   }, []);
 
   return (
-    <Box
-      sx={{
-        pr: `${chatWidth}px`,     // keep space for chat
-        flex: 1,
-        display: "flex",
-        alignItems: "stretch",
-        justifyContent: "center",
-        minHeight: 0,            // IMPORTANT for flex children to size correctly
-      }}
+    <div
+      className="flex-1 flex items-stretch justify-center min-h-0"
+      style={{ paddingRight: `${chatWidth}px` }}
     >
-      <Box
+      <div
         id="screen-stage-container"
         tabIndex={0}
         onDoubleClick={toggleFullscreen}
-        sx={{
-          width: "98%",
-          height: "100%",
-          maxWidth: "100%",
-          maxHeight: "100%",
-          bgcolor: "#000",
-          borderRadius: 2,
-          boxShadow: 3,
-          overflow: "hidden",
-          position: "relative",
-          outline: "none",
-          display: "flex",
-          alignItems: "stretch",
-          justifyContent: "stretch",
-          // When fullscreen, video fills container
-          "&:fullscreen video, &:-webkit-full-screen video": {
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            background: "#000",
-          },
-        }}
+        className="w-[98%] h-full max-w-full max-h-full bg-black rounded-xl shadow-lg overflow-hidden relative outline-none flex items-stretch justify-stretch [&:fullscreen_video]:w-full [&:fullscreen_video]:h-full [&:fullscreen_video]:object-contain"
       >
         <video
           id="screen-stage"
           autoPlay
           playsInline
           muted
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            display: "block",
-            background: "#000",
-          }}
+          className="w-full h-full object-contain block bg-black"
         />
 
-        {!screenSharerId && !isSharingScreen ? (
-          <Box
-            sx={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "rgba(255,255,255,0.7)",
-              fontSize: 16,
-              pointerEvents: "none",
-            }}
-          >
+        {!screenSharerId && !isSharingScreen && (
+          <div className="absolute inset-0 flex items-center justify-center text-foreground/50 text-sm pointer-events-none">
             No one is sharing
-          </Box>
-        ) : null}
+          </div>
+        )}
 
-        <Box
-          sx={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            display: "flex",
-            gap: 1,
-            zIndex: 2,
-          }}
-        >
-          <Tooltip
+        <div className="absolute top-2 right-2 flex gap-1 z-[2]">
+          <button
+            onClick={toggleFullscreen}
+            className="p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-colors"
             title={isStageFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"}
           >
-            <IconButton
-              size="small"
-              onClick={toggleFullscreen}
-              sx={{
-                bgcolor: "rgba(0,0,0,0.5)",
-                color: "#fff",
-                "&:hover": { bgcolor: "rgba(0,0,0,0.7)" },
-              }}
-            >
-              {isStageFullscreen ? (
-                <FullscreenExitIcon />
-              ) : (
-                <FullscreenIcon />
-              )}
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Box>
-    </Box>
+            {isStageFullscreen ? (
+              <Minimize className="w-4 h-4" />
+            ) : (
+              <Maximize className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

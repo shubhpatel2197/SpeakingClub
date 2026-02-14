@@ -1,48 +1,14 @@
 import * as React from "react";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import CssBaseline from "@mui/material/CssBaseline";
-import FormLabel from "@mui/material/FormLabel";
-import FormControl from "@mui/material/FormControl";
-import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
-import Stack from "@mui/material/Stack";
-import MuiCard from "@mui/material/Card";
-import { styled } from "@mui/material/styles";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import axiosInstance from "../../api/axiosInstance";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthProvider";
 import { useSnackbar } from "../../context/SnackbarProvider";
 
-const Card = styled(MuiCard)(({ theme }) => ({
-  display: "flex",
-  flexDirection: "column",
-  alignSelf: "center",
-  width: "100%",
-  padding: theme.spacing(4),
-  gap: theme.spacing(2),
-  margin: "auto",
-  boxShadow:
-    "hsla(220, 30%, 5%, 0.05) 0px 5px 15px 0px, hsla(220, 25%, 10%, 0.05) 0px 15px 35px -5px",
-  [theme.breakpoints.up("sm")]: {
-    width: "450px",
-  },
-  ...theme.applyStyles("dark", {
-    boxShadow:
-      "hsla(220, 30%, 5%, 0.5) 0px 5px 15px 0px, hsla(220, 25%, 10%, 0.08) 0px 15px 35px -5px",
-  }),
-}));
-
-const SignUpContainer = styled(Stack)(({ theme }) => ({
-  height: "calc((1 - var(--template-frame-height, 0)) * 100dvh)",
-  minHeight: "100%",
-  padding: theme.spacing(2),
-  [theme.breakpoints.up("sm")]: {
-    padding: theme.spacing(4),
-  },
-}));
-
-export default function SignUp(props: { disableCustomTheme?: boolean }) {
+export default function SignUp() {
   const { showSnackbar } = useSnackbar();
   const { refreshUser } = useAuthContext();
   const navigate = useNavigate();
@@ -57,7 +23,6 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
     const email = document.getElementById("email") as HTMLInputElement;
     const password = document.getElementById("password") as HTMLInputElement;
     const name = document.getElementById("name") as HTMLInputElement;
-
     let isValid = true;
 
     if (!email.value || !/\S+@\S+\.\S+/.test(email.value)) {
@@ -71,7 +36,7 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
 
     if (!password.value) {
       setPasswordError(true);
-      // setPasswordErrorMessage("Password must be at least 6 characters long.");
+      setPasswordErrorMessage("Password is required.");
       isValid = false;
     } else {
       setPasswordError(false);
@@ -103,7 +68,7 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
     if (!isValid) return;
 
     try {
-      const response = await axiosInstance.post("/api/auth/signup", {
+      await axiosInstance.post("/api/auth/signup", {
         name,
         email,
         password,
@@ -114,126 +79,87 @@ export default function SignUp(props: { disableCustomTheme?: boolean }) {
       navigate("/", { replace: true });
     } catch (error: any) {
       if (error.response) {
-        console.error("Signup failed:", error.response.data);
         showSnackbar(error.response.data?.error || "Signup failed", {
           severity: "error",
         });
       } else {
-        console.error("Network error:", error.message);
         showSnackbar("Network error", { severity: "error" });
       }
     }
   };
 
   return (
-    <>
-      <CssBaseline enableColorScheme />
-      <SignUpContainer direction="column" justifyContent="space-between">
-        <Card variant="outlined">
-          <Typography
-            component="h1"
-            variant="h4"
-            sx={{ width: "100%", fontSize: "clamp(2rem, 10vw, 2.15rem)" }}
-          >
-            Sign up
-          </Typography>
-          <Box
-            component="form"
-            onSubmit={handleSubmit}
-            sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-          >
-            <FormControl>
-              <FormLabel htmlFor="name">Full name</FormLabel>
-              <TextField
-                autoComplete="name"
-                name="name"
-                required
-                fullWidth
+    <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4 py-8">
+      <Card className="w-full max-w-md p-8">
+        <CardHeader className="p-0 mb-6">
+          <CardTitle className="text-3xl font-display gradient-text">Sign up</CardTitle>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full name</Label>
+              <Input
                 id="name"
+                name="name"
                 placeholder="Jon Snow"
-                error={nameError}
-                helperText={nameErrorMessage}
-                color={nameError ? "error" : "primary"}
-              />
-            </FormControl>
-            <FormControl>
-              <FormLabel htmlFor="email">Email</FormLabel>
-              <TextField
+                autoComplete="name"
                 required
-                fullWidth
+                className={nameError ? "border-destructive focus:ring-destructive/50" : ""}
+              />
+              {nameError && (
+                <p className="text-xs text-destructive mt-1">{nameErrorMessage}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
                 id="email"
-                placeholder="your@email.com"
+                type="email"
                 name="email"
+                placeholder="your@email.com"
                 autoComplete="email"
-                variant="outlined"
-                error={emailError}
-                helperText={emailErrorMessage}
-                color={passwordError ? "error" : "primary"}
-              />
-            </FormControl>
-            <FormControl>
-              <FormLabel htmlFor="password">Password</FormLabel>
-              <TextField
                 required
-                fullWidth
+                className={emailError ? "border-destructive focus:ring-destructive/50" : ""}
+              />
+              {emailError && (
+                <p className="text-xs text-destructive mt-1">{emailErrorMessage}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
                 name="password"
                 placeholder="••••••"
-                type="password"
-                id="password"
                 autoComplete="new-password"
-                variant="outlined"
-                error={passwordError}
-                helperText={passwordErrorMessage}
-                color={passwordError ? "error" : "primary"}
+                required
+                className={passwordError ? "border-destructive focus:ring-destructive/50" : ""}
               />
-            </FormControl>
-            {/* <FormControlLabel
-              control={<Checkbox value="allowExtraEmails" color="primary" />}
-              label="I want to receive updates via email."
-            /> */}
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              onClick={validateInputs}
-              sx={{ mt: 3 }}
-            >
+              {passwordError && (
+                <p className="text-xs text-destructive mt-1">{passwordErrorMessage}</p>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full mt-2" onClick={validateInputs}>
               Sign up
             </Button>
-          </Box>
-          {/* <Divider>
-            <Typography sx={{ color: 'text.secondary' }}>or</Typography>
-          </Divider>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => alert('Sign up with Google')}
-              startIcon={<GoogleIcon />}
-            >
-              Sign up with Google
-            </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => alert('Sign up with Facebook')}
-              startIcon={<FacebookIcon />}
-            >
-              Sign up with Facebook
-            </Button>
-            <Typography sx={{ textAlign: 'center' }}>
-              Already have an account?{' '}
-              <Link
-                href="/material-ui/getting-started/templates/sign-in/"
-                variant="body2"
-                sx={{ alignSelf: 'center' }}
+
+            <p className="text-center text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <a
+                href="/signin"
+                className="text-primary hover:text-primary/80 font-medium transition-colors"
               >
                 Sign in
-              </Link>
-            </Typography>
-          </Box> */}
-        </Card>
-      </SignUpContainer>
-    </>
+              </a>
+            </p>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

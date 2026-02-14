@@ -20,6 +20,7 @@ type AuthOptions = {
 export function requireAuth(options: AuthOptions = { requireUser: true }) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      console.log("HI")
       const token =
         req.cookies?.token ||
         // fallback: Authorization header (Bearer)

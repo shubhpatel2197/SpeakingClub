@@ -1,23 +1,16 @@
 import React, { useState } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
 import {
-  Card,
-  CardContent,
-  Typography,
-  Box,
-  Button,
-  Stack,
-  Chip,
-  Avatar,
-  IconButton,
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogActions,
-  useMediaQuery,
-} from "@mui/material";
-import { styled, useTheme } from "@mui/material/styles";
-import PersonIcon from "@mui/icons-material/Person";
-import DeleteForeverOutlinedIcon from "@mui/icons-material/DeleteForeverOutlined";
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../ui/dialog";
+import { Trash2, User } from "lucide-react";
 import MemberAvatar from "../ui/MemberAvatar";
 import { useAuthContext } from "../../context/AuthProvider";
 import { useSnackbar } from "../../context/SnackbarProvider";
@@ -41,34 +34,15 @@ export type Group = {
   _count?: { memberships?: number };
 };
 
-// ⬇️ Responsive card: full-width on mobile, original size on sm+
-const StyledCard = styled(Card)(({ theme }) => ({
-  position: "relative",
-  borderRadius: theme.spacing(1.5),
-  boxShadow:
-    "hsla(220, 30%, 5%, 0.05) 0px 5px 15px 0px, hsla(220, 25%, 10%, 0.05) 0px 15px 35px -5px",
-  // desktop/tablet defaults
-  minWidth: 430,
-  minHeight: 270,
-  padding: theme.spacing(1.25),
-  // mobile overrides
-  [theme.breakpoints.down("sm")]: {
-    minWidth: "100%",
-    minHeight: 220,
-    padding: theme.spacing(1),
-  },
-}));
-
 const MAX_VISIBLE = 12;
 
-// Base avatar sizing logic (desktop/tablet)
 function baseAvatarSize(count: number) {
-  if (count <= 2) return 110;
-  if (count <= 3) return 92;
-  if (count <= 4) return 80;
-  if (count <= 6) return 68;
-  if (count <= 8) return 58;
-  return 48;
+  if (count <= 2) return 80;
+  if (count <= 3) return 68;
+  if (count <= 4) return 60;
+  if (count <= 6) return 52;
+  if (count <= 8) return 46;
+  return 40;
 }
 
 export default function GroupCard({
@@ -84,9 +58,6 @@ export default function GroupCard({
   onDeleteSuccess?: (groupId: string) => void;
   hideJoin?: boolean;
 }) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
   const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
   const { user } = useAuthContext();
@@ -111,11 +82,9 @@ export default function GroupCard({
 
     setJoinLoading(true);
     try {
-      // Open room directly for now
       const roomUrl = `/room/${group.id}`;
       window.open(roomUrl, "_blank", "noopener,noreferrer");
     } catch (err: any) {
-      console.error(err);
       showSnackbar(err?.response?.data?.error || "Failed to join group", {
         severity: "error",
       });
@@ -135,7 +104,6 @@ export default function GroupCard({
       onDeleteSuccess?.(group.id);
       setDeleteOpen(false);
     } catch (err: any) {
-      console.error(err);
       showSnackbar(err?.response?.data?.error || "Failed to delete group", {
         severity: "error",
       });
@@ -145,11 +113,7 @@ export default function GroupCard({
   };
 
   const displayCount = Math.min(members.length, MAX_VISIBLE);
-
-  // Scale avatars down on mobile (≈ 70% looks good)
-  const avatarSize = Math.round(
-    baseAvatarSize(displayCount) * (isMobile ? 0.7 : 1)
-  );
+  const avatarSize = baseAvatarSize(displayCount);
 
   const placeholders =
     typeof group.max_members === "number"
@@ -157,191 +121,113 @@ export default function GroupCard({
       : Math.max(0, 2 - displayCount);
 
   return (
-    <StyledCard>
+    <div className="relative glass rounded-2xl p-5 transition-all duration-300 hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.1)] group/card">
+      {/* Delete button (owner only) */}
       {isOwner && (
-        <IconButton
-          size="small"
-          aria-label="Delete group"
+        <button
           onClick={() => setDeleteOpen(true)}
-          sx={(t) => ({
-            position: "absolute",
-            left: t.spacing(1),
-            bottom: t.spacing(1),
-            zIndex: 2,
-            bgcolor: t.palette.mode === "dark" ? "grey.900" : "common.white",
-            border: `1px solid ${t.palette.divider}`,
-            boxShadow: 1,
-            "&:hover": { bgcolor: t.palette.error.light, color: "#fff" },
-          })}
+          className="absolute left-3 bottom-3 z-10 p-1.5 rounded-full glass hover:bg-destructive/20 hover:text-destructive transition-all duration-200 text-foreground/50"
+          aria-label="Delete group"
         >
-          <DeleteForeverOutlinedIcon fontSize="small" />
-        </IconButton>
+          <Trash2 className="w-4 h-4" />
+        </button>
       )}
 
-      <CardContent
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          gap: { xs: 1.25, sm: 2 },
-        }}
-      >
-        {/* Header */}
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: { xs: "stretch", sm: "flex-start" },
-            gap: { xs: 1, sm: 0 },
-          }}
-        >
-          <Box>
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: 600,
-                ml: 1,
-                mt: 0.5,
-                fontSize: { xs: "0.95rem", sm: "1rem" },
-              }}
-            >
-              {group.language} • {group.level}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{
-                ml: 1,
-                fontSize: { xs: "0.8rem", sm: "0.85rem" },
-              }}
-            >
-              {group.description || "No description"}
-            </Typography>
-          </Box>
+      {/* Header */}
+      <div className="flex justify-between items-start gap-2 mb-4">
+        <div className="min-w-0">
+          <h3 className="font-display font-semibold text-base text-foreground truncate">
+            {group.language} <span className="text-primary/60">•</span> {group.level}
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
+            {group.description || "No description"}
+          </p>
+        </div>
 
-          <Box sx={{ textAlign: "right" }}>
-            {group.owner && (
-              <Chip
-                label={`Owner: ${group.owner.name ?? group.owner.id}`}
-                size="small"
-                variant="outlined"
-              />
-            )}
-            <Typography
-              variant="caption"
-              display="block"
-              sx={{ mt: 1, fontSize: { xs: "0.7rem", sm: "0.75rem" } }}
-            >
-              {memberCount} member{memberCount === 1 ? "" : "s"}
-            </Typography>
-          </Box>
-        </Box>
-
-        {/* Avatars */}
-        <Stack
-          direction="row"
-          useFlexGap
-          flexWrap="wrap"
-          gap={{ xs: 1, sm: 1.5 }}
-          sx={{ mx: { xs: 1, sm: 2 }, mt: { xs: 0.5, sm: 1 } }}
-        >
-          {members.slice(0, MAX_VISIBLE).map((m) => (
-            <MemberAvatar
-              key={m.id}
-              member={m}
-              sxAvatar={{
-                mt: 1,
-                width: avatarSize,
-                height: avatarSize,
-              }}
-            />
-          ))}
-
-          {Array.from({ length: placeholders }).map((_, i) => (
-            <Avatar
-              key={`ph-${i}`}
-              sx={(t) => ({
-                mt: 1,
-                width: avatarSize,
-                height: avatarSize,
-                bgcolor:
-                  t.palette.mode === "dark"
-                    ? t.palette.background.default
-                    : t.palette.action.hover,
-                border: `2px dashed ${t.palette.divider}`,
-                color: t.palette.text.disabled,
-              })}
-            >
-              <PersonIcon
-                sx={{ fontSize: Math.max(18, Math.floor(avatarSize / 2.5)) }}
-              />
-            </Avatar>
-          ))}
-
-          {memberCount > MAX_VISIBLE && (
-            <Chip
-              label={`+${memberCount - MAX_VISIBLE}`}
-              size="small"
-              sx={{
-                height: avatarSize,
-                borderRadius: avatarSize / 2,
-                alignSelf: "center",
-                fontWeight: 600,
-              }}
-            />
+        <div className="text-right shrink-0">
+          {group.owner && (
+            <Badge variant="outline" className="text-xs">
+              {group.owner.name ?? "Owner"}
+            </Badge>
           )}
-        </Stack>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            {memberCount} member{memberCount === 1 ? "" : "s"}
+          </p>
+        </div>
+      </div>
 
-        {/* Footer */}
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "flex-end",
-            mb: { xs: 1, sm: 2 },
-            mr: { xs: 1, sm: 2 },
-          }}
-        >
-          {!hideJoin && (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleJoin}
-              disabled={joinLoading}
-              sx={{
-                px: { xs: 3, sm: 4 },
-                py: { xs: 0.5, sm: 0.75 },
-                borderRadius: 1,
-                fontSize: { xs: "0.85rem", sm: "0.9rem" },
-              }}
-            >
-              {joinLoading ? "Joining..." : "Join"}
-            </Button>
-          )}
-        </Box>
-      </CardContent>
+      {/* Avatars */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {members.slice(0, MAX_VISIBLE).map((m) => (
+          <MemberAvatar
+            key={m.id}
+            member={m}
+            avatarSize={avatarSize}
+            withName={false}
+          />
+        ))}
 
-      {/* Delete confirm dialog */}
-      <Dialog
-        open={deleteOpen}
-        onClose={() => (deleteLoading ? null : setDeleteOpen(false))}
-      >
-        <DialogTitle>Delete this group?</DialogTitle>
-        <DialogContent>
-          This action can’t be undone. All members will lose access to this room.
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)} disabled={deleteLoading} variant="outlined">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDelete}
-            color="error"
-            variant="contained"
-            disabled={deleteLoading}
+        {Array.from({ length: placeholders }).map((_, i) => (
+          <div
+            key={`ph-${i}`}
+            className="rounded-full border-2 border-dashed border-border flex items-center justify-center text-foreground/20"
+            style={{ width: avatarSize, height: avatarSize }}
           >
-            {deleteLoading ? "Deleting..." : "Delete"}
+            <User className="w-5 h-5" />
+          </div>
+        ))}
+
+        {memberCount > MAX_VISIBLE && (
+          <div
+            className="rounded-full bg-secondary flex items-center justify-center font-semibold text-sm text-foreground/60"
+            style={{ width: avatarSize, height: avatarSize }}
+          >
+            +{memberCount - MAX_VISIBLE}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      {!hideJoin && (
+        <div className="flex justify-end">
+          <Button
+            onClick={handleJoin}
+            disabled={joinLoading}
+            size="sm"
+            className="px-6"
+          >
+            {joinLoading ? "Joining..." : "Join"}
           </Button>
-        </DialogActions>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(open) => !deleteLoading && setDeleteOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete this group?</DialogTitle>
+            <DialogDescription>
+              This action can't be undone. All members will lose access to this room.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleteLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
-    </StyledCard>
+    </div>
   );
 }

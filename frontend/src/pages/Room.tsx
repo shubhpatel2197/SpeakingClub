@@ -1,25 +1,23 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
-  Box,
-  IconButton,
-  Typography,
-  Tooltip,
-  Divider,
-  Button,
-  Avatar,
-  Stack,
-  Backdrop,
-  Paper,
-  useMediaQuery,
-} from "@mui/material";
-import MicIcon from "@mui/icons-material/Mic";
-import MicOffIcon from "@mui/icons-material/MicOff";
-import LogoutIcon from "@mui/icons-material/Logout";
-import ScreenShareIcon from "@mui/icons-material/ScreenShare";
-import StopScreenShareIcon from "@mui/icons-material/StopScreenShare";
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
-import CloseIcon from "@mui/icons-material/Close";
-import { styled, useTheme } from "@mui/material/styles";
+  Mic,
+  MicOff,
+  LogOut,
+  ScreenShare,
+  ScreenShareOff,
+  MessageCircle,
+  Link as LinkIcon,
+} from "lucide-react";
+import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../components/ui/dialog";
+import { Avatar, AvatarFallback } from "../components/ui/avatar-ui";
 import ChatPanel from "../components/room/ChatPanel";
 import { useAuthContext } from "../context/AuthProvider";
 import { useMediasoup } from "../hooks/useMediasoup";
@@ -29,77 +27,6 @@ import { useSnackbar } from "../context/SnackbarProvider";
 import VideoArea from "../components/room/VideoArea";
 
 const CHAT_WIDTH = 340;
-
-const RoomContainer = styled(Box)(({ theme }) => ({
-  display: "flex",
-  flexDirection: "column",
-  height: "91vh",
-  width: "100%",
-  background:
-    theme.palette.mode === "dark"
-      ? "linear-gradient(180deg, #121212 0%, #1e1e1e 100%)"
-      : "linear-gradient(180deg, #f7f9fc 0%, #ffffff 100%)",
-  border: `2px solid ${theme.palette.divider}`,
-  minHeight: 0,
-}));
-
-const TopBar = styled(Box)(({ theme }) => ({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: theme.spacing(1, 1.5),
-  borderBottom: `2px solid ${theme.palette.divider}`,
-  backdropFilter: "blur(6px)",
-  gap: theme.spacing(1),
-}));
-
-const MainArea = styled(Box)(() => ({
-  flex: 1,
-  display: "flex",
-  position: "relative",
-  width: "100%",
-  minHeight: 0,
-}));
-
-const BottomBar = styled(Box)(({ theme }) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: theme.spacing(1.25),
-  padding: theme.spacing(1),
-  borderTop: `2px solid ${theme.palette.divider}`,
-  background: theme.palette.background.paper,
-  position: "relative",
-}));
-
-const MiddleWrap = styled(Box)(() => ({
-  position: "relative",
-  display: "flex",
-  flexDirection: "column",
-  flex: 1,
-  minHeight: 0,
-}));
-
-const MembersScroll = styled(Box)(({ theme }) => ({
-  display: "flex",
-  gap: theme.spacing(1),
-  overflowX: "auto",
-  padding: theme.spacing(0, 1),
-  alignItems: "center",
-  "&::-webkit-scrollbar": { height: 8 },
-  "&::-webkit-scrollbar-thumb": {
-    background: theme.palette.divider,
-    borderRadius: 20,
-  },
-}));
-
-const MemberItem = styled(Box)(({ theme }) => ({
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  minWidth: 72,
-  gap: 4,
-  padding: theme.spacing(0.5),
-}));
 
 type RoomParticipant = {
   id: string;
@@ -117,28 +44,35 @@ function avatarInitials(nameOrId?: string | null) {
     .toUpperCase();
 }
 
-function deterministicColor(name?: string) {
-  const colors = [
-    "#1976D2",
-    "#9C27B0",
-    "#E91E63",
-    "#FF9800",
-    "#4CAF50",
-    "#0097A7",
-    "#795548",
-    "#F44336",
-  ];
+const gradientClasses = [
+  "from-violet-500 to-fuchsia-500",
+  "from-pink-500 to-rose-500",
+  "from-blue-500 to-cyan-500",
+  "from-orange-500 to-amber-500",
+  "from-green-500 to-emerald-500",
+  "from-teal-500 to-cyan-500",
+  "from-indigo-500 to-purple-500",
+  "from-red-500 to-orange-500",
+];
+
+function deterministicGradient(name?: string) {
   const k = name ?? String(Math.random());
   let h = 0;
   for (let i = 0; i < k.length; i++) h = k.charCodeAt(i) + ((h << 5) - h);
-  return colors[Math.abs(h) % colors.length];
+  return gradientClasses[Math.abs(h) % gradientClasses.length];
 }
 
 export default function Room() {
   const { showSnackbar } = useSnackbar();
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
+
+  const [isMdUp, setIsMdUp] = useState(window.innerWidth >= 768);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handler = (e: MediaQueryListEvent) => setIsMdUp(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const { id: roomId } = useParams<{ id: string }>();
   const { user } = useAuthContext();
@@ -158,23 +92,20 @@ export default function Room() {
   } = useMediasoup();
   const group = useCurrentGroup();
 
-  const [chatOpen, setChatOpen] = useState<boolean>(isMdUp);
+  const [chatOpen, setChatOpen] = useState<boolean>(false);
   useEffect(() => {
     setChatOpen(isMdUp);
   }, [isMdUp]);
 
   const currentUserId = user?.id;
 
-  // count only messages that are not from the current user
   const foreignCount = useMemo(() => {
     return messages.reduce((acc, m) => acc + (m.from !== currentUserId ? 1 : 0), 0);
   }, [messages, currentUserId]);
 
-  // unread logic based on "last seen" foreign count
   const [unread, setUnread] = useState(0);
   const lastSeenForeignRef = useRef(0);
 
-  // mark as seen when chat opens
   useEffect(() => {
     if (chatOpen) {
       lastSeenForeignRef.current = foreignCount;
@@ -182,7 +113,6 @@ export default function Room() {
     }
   }, [chatOpen, foreignCount]);
 
-  // when chat is closed and new foreign messages arrive, update unread
   useEffect(() => {
     if (!chatOpen && foreignCount > lastSeenForeignRef.current) {
       setUnread(foreignCount - lastSeenForeignRef.current);
@@ -252,80 +182,49 @@ export default function Room() {
     screenSharerId && !isSharingScreen
       ? `${screenSharerName || "Someone"} is sharing`
       : isSharingScreen
-      ? "You are sharing"
-      : "";
+        ? "You are sharing"
+        : "";
 
   const reservedRight = isMdUp && chatOpen ? `${CHAT_WIDTH}px` : "0px";
 
   return (
-    <RoomContainer>
-      <TopBar>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="h6"
-            fontWeight={600}
-            sx={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              maxWidth: { xs: "60vw", md: "40vw" },
-            }}
-          >
+    <div className="flex flex-col h-[91vh] w-full border-2 border-border min-h-0 bg-background">
+      {/* Top Bar */}
+      <div className="flex items-center justify-between px-3 py-2 border-b-2 border-border glass gap-2">
+        <div className="min-w-0">
+          <h2 className="font-display font-semibold text-base truncate max-w-[60vw] md:max-w-[40vw]">
             {(group as any)?.description ?? "Group room"}
-          </Typography>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ display: { xs: "none", sm: "block" } }}
-          >
+          </h2>
+          <p className="text-xs text-muted-foreground hidden sm:block">
             Language: {(group as any)?.language ?? "—"} • Level:{" "}
             {(group as any)?.level ?? "—"} • Members: {membersCount}
-          </Typography>
-          {sharingBanner ? (
-            <Typography variant="caption" color="primary">
-              {sharingBanner}
-            </Typography>
-          ) : null}
-        </Box>
+          </p>
+          {sharingBanner && (
+            <p className="text-xs text-primary font-medium">{sharingBanner}</p>
+          )}
+        </div>
 
-        <Stack direction="row" spacing={1} alignItems="center">
-          {/* Chat toggle with green dot when unread > 0 and chat closed */}
-          <Tooltip title={chatOpen ? "Hide chat" : "Show chat"}>
-            <span>
-              <IconButton
-                onClick={() => {
-                  const next = !chatOpen;
-                  setChatOpen(next);
-                  if (next) setUnread(0);
-                }}
-                color="primary"
-                sx={{ display: { xs: "inline-flex", md: "inline-flex" }, position: "relative" }}
-                aria-label="Open chat"
-              >
-                <ChatBubbleOutlineIcon />
-                {!chatOpen && unread > 0 && (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: 6,
-                      right: 6,
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      backgroundColor: "#22c55e",
-                      boxShadow: "0 0 4px #22c55e",
-                      zIndex: 1,
-                    }}
-                  />
-                )}
-              </IconButton>
-            </span>
-          </Tooltip>
+        <div className="flex items-center gap-1.5">
+          {/* Chat toggle */}
+          <button
+            onClick={() => {
+              const next = !chatOpen;
+              setChatOpen(next);
+              if (next) setUnread(0);
+            }}
+            className="relative p-2 rounded-lg hover:bg-white/10 text-primary transition-colors"
+            title={chatOpen ? "Hide chat" : "Show chat"}
+          >
+            <MessageCircle className="w-5 h-5" />
+            {!chatOpen && unread > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_4px_#22c55e]" />
+            )}
+          </button>
 
           {/* Invite */}
           <Button
-            variant="outlined"
-            size="small"
+            variant="outline"
+            size="sm"
             onClick={() => {
               navigator.clipboard
                 ?.writeText(window.location.href)
@@ -333,150 +232,160 @@ export default function Room() {
                 .catch(() => showSnackbar("Failed to copy link to clipboard"));
             }}
           >
+            <LinkIcon className="w-4 h-4 mr-1" />
             Invite
           </Button>
 
-          {/* Share / Stop */}
-          <Tooltip
+          {/* Screen Share */}
+          <button
+            onClick={toggleScreenShare}
+            disabled={
+              !isSharingScreen &&
+              !!screenSharerId &&
+              screenSharerId !== currentUserId
+            }
+            className={`p-2 rounded-lg transition-colors ${isSharingScreen
+                ? "text-destructive hover:bg-destructive/10"
+                : "text-primary hover:bg-white/10"
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
             title={
               isSharingScreen
                 ? "Stop screen share"
                 : screenSharerId && screenSharerId !== currentUserId
-                ? `${screenSharerName || "Someone"} is already sharing`
-                : "Start screen share"
+                  ? `${screenSharerName || "Someone"} is already sharing`
+                  : "Start screen share"
             }
           >
-            <span>
-              <IconButton
-                onClick={toggleScreenShare}
-                color={isSharingScreen ? "error" : "primary"}
-                disabled={!isSharingScreen && !!screenSharerId && screenSharerId !== currentUserId}
-              >
-                {isSharingScreen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
-              </IconButton>
-            </span>
-          </Tooltip>
+            {isSharingScreen ? (
+              <ScreenShareOff className="w-5 h-5" />
+            ) : (
+              <ScreenShare className="w-5 h-5" />
+            )}
+          </button>
 
           {/* Leave */}
           <Button
-            variant="outlined"
-            color="error"
-            size="small"
-            startIcon={<LogoutIcon />}
+            variant="outline"
+            size="sm"
             onClick={handleLeaveClick}
+            className="text-destructive border-destructive/30 hover:bg-destructive/10"
           >
+            <LogOut className="w-4 h-4 mr-1" />
             Leave
           </Button>
-        </Stack>
-      </TopBar>
+        </div>
+      </div>
 
-      <MiddleWrap>
-        <MainArea>
+      {/* Middle: Video + Chat */}
+      <div className="relative flex flex-col flex-1 min-h-0">
+        {/* Video */}
+        <div className="flex-1 flex relative w-full min-h-0">
           <VideoArea
             isSharingScreen={isSharingScreen}
             screenSharerId={screenSharerId}
             screenSharerName={screenSharerName}
             chatWidth={isMdUp && chatOpen ? CHAT_WIDTH : 0}
           />
-        </MainArea>
+        </div>
 
-        <BottomBar sx={{ pr: reservedRight }}>
-          {/* Mic + share quick actions */}
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mr: 1 }}>
-            <Tooltip
-              title={
-                isSharingScreen
-                  ? "Stop screen share"
-                  : screenSharerId && screenSharerId !== currentUserId
-                  ? `${screenSharerName || "Someone"} is already sharing`
-                  : "Start screen share"
+        {/* Bottom Bar: Members */}
+        <div
+          className="flex items-center gap-2.5 p-2 border-t-2 border-border glass"
+          style={{ paddingRight: reservedRight }}
+        >
+          {/* Quick screen share */}
+          <div className="flex items-center gap-1.5 mr-2">
+            <button
+              onClick={toggleScreenShare}
+              disabled={
+                !isSharingScreen &&
+                !!screenSharerId &&
+                screenSharerId !== currentUserId
               }
+              className={`p-1.5 rounded-lg transition-colors ${isSharingScreen
+                  ? "text-destructive hover:bg-destructive/10"
+                  : "text-primary hover:bg-white/10"
+                } disabled:opacity-40`}
+              title={isSharingScreen ? "Stop sharing" : "Share screen"}
             >
-              <span>
-                <IconButton
-                  onClick={toggleScreenShare}
-                  color={isSharingScreen ? "error" : "primary"}
-                  size="small"
-                  disabled={!isSharingScreen && !!screenSharerId && screenSharerId !== currentUserId}
-                >
-                  {isSharingScreen ? (
-                    <StopScreenShareIcon fontSize="small" />
-                  ) : (
-                    <ScreenShareIcon fontSize="small" />
-                  )}
-                </IconButton>
-              </span>
-            </Tooltip>
+              {isSharingScreen ? (
+                <ScreenShareOff className="w-4 h-4" />
+              ) : (
+                <ScreenShare className="w-4 h-4" />
+              )}
+            </button>
 
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.5, display: { xs: "none", sm: "block" } }} />
-          </Stack>
+            <div className="w-px h-6 bg-border hidden sm:block" />
+          </div>
 
-          <MembersScroll sx={{ flex: 1 }}>
+          {/* Members scroll */}
+          <div className="flex gap-2 overflow-x-auto items-center flex-1 px-1">
             {displayMembers.map((p) => {
               const isCurrent = p.id === currentUserId;
               const displayName = p.name ?? p.id;
-              const showMicOn = isCurrent ? micOn : p.muted === undefined ? true : !p.muted;
+              const showMicOn = isCurrent
+                ? micOn
+                : p.muted === undefined
+                  ? true
+                  : !p.muted;
+              const gradient = deterministicGradient(displayName);
+
               return (
-                <MemberItem key={p.id}>
+                <div key={p.id} className="flex flex-col items-center min-w-[72px] gap-1 py-1">
                   <Avatar
-                    sx={{
-                      width: { xs: 40, sm: 48, md: 56 },
-                      height: { xs: 40, sm: 48, md: 56 },
-                      bgcolor: deterministicColor(displayName),
-                      fontSize: { xs: 12, sm: 14, md: 16 },
-                    }}
+                    className="ring-2 ring-primary/20"
+                    style={{ width: 48, height: 48 }}
                   >
-                    {avatarInitials(displayName)}
+                    <AvatarFallback
+                      className={`bg-gradient-to-br text-white font-semibold text-xs ${gradient}`}
+                    >
+                      {avatarInitials(displayName)}
+                    </AvatarFallback>
                   </Avatar>
-                  <Typography
-                    sx={{
-                      fontSize: { xs: 10, sm: 11, md: 12 },
-                      mt: 0.25,
-                      textAlign: "center",
-                      maxWidth: { xs: 56, md: 70 },
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
+                  <span
+                    className="text-[11px] text-center max-w-[70px] truncate"
                     title={displayName}
                   >
                     {displayName}
-                  </Typography>
-                  <Tooltip
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (!isCurrent) return;
+                      toggleMic();
+                    }}
+                    className={`p-1 rounded-full transition-colors ${showMicOn
+                        ? "bg-primary/15 text-primary"
+                        : "text-muted-foreground"
+                      } ${isCurrent ? "cursor-pointer hover:bg-primary/25" : "cursor-default"}`}
                     title={
-                      isCurrent ? (showMicOn ? "Mute" : "Unmute") : showMicOn ? "Mic on" : "Mic off"
+                      isCurrent
+                        ? showMicOn
+                          ? "Mute"
+                          : "Unmute"
+                        : showMicOn
+                          ? "Mic on"
+                          : "Mic off"
                     }
                   >
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        if (!isCurrent) return;
-                        toggleMic();
-                      }}
-                      sx={{
-                        bgcolor: showMicOn ? "rgba(25,118,210,0.12)" : undefined,
-                        color: showMicOn ? "primary.main" : "text.secondary",
-                      }}
-                    >
-                      {showMicOn ? <MicIcon fontSize="inherit" /> : <MicOffIcon fontSize="inherit" />}
-                    </IconButton>
-                  </Tooltip>
-                </MemberItem>
+                    {showMicOn ? (
+                      <Mic className="w-3.5 h-3.5" />
+                    ) : (
+                      <MicOff className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
               );
             })}
-          </MembersScroll>
-        </BottomBar>
+          </div>
+        </div>
 
-        {/* Chat as side panel (md+) or slide-over (mobile) */}
+        {/* Chat Panel */}
         {chatOpen && (
           <ChatPanel
-            onClose={() => {
-              setChatOpen(false);
-            }}
+            onClose={() => setChatOpen(false)}
             messages={messages}
             onSend={(t) => {
               sendChat(t);
-              // optional: you can leave this as-is; unread logic is foreign-only
               setUnread(0);
               lastSeenForeignRef.current = foreignCount;
             }}
@@ -487,52 +396,33 @@ export default function Room() {
             mobileFullScreen
           />
         )}
-      </MiddleWrap>
+      </div>
 
-      <Backdrop
-        open={confirmLeaveOpen}
-        sx={{
-          color: "#fff",
-          zIndex: (theme) => theme.zIndex.modal + 1,
-          backdropFilter: "blur(2px)",
-        }}
-      >
-        <Paper
-          elevation={8}
-          sx={(theme) => ({
-            width: 420,
-            maxWidth: "90vw",
-            p: 3,
-            borderRadius: 2,
-            boxShadow:
-              theme.palette.mode === "dark"
-                ? "0 8px 30px rgba(0,0,0,0.6)"
-                : "0 8px 24px rgba(0,0,0,0.15)",
-          })}
-        >
-          <Typography variant="h6" sx={{ mb: 1.5 }}>
-            Leave room?
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {isOwner
-              ? "You’re the owner. Leaving may close the session for everyone."
-              : "You can rejoin anytime using the invite link."}
-          </Typography>
-          <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <Button onClick={cancelLeave} variant="outlined">
+      {/* Leave confirmation */}
+      <Dialog open={confirmLeaveOpen} onOpenChange={(open) => setConfirmLeaveOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Leave room?</DialogTitle>
+            <DialogDescription>
+              {isOwner
+                ? "You're the owner. Leaving may close the session for everyone."
+                : "You can rejoin anytime using the invite link."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={cancelLeave}>
               Cancel
             </Button>
             <Button
+              variant="destructive"
               onClick={confirmLeave}
-              color="error"
-              variant="contained"
-              startIcon={<LogoutIcon />}
             >
+              <LogOut className="w-4 h-4 mr-1" />
               Leave
             </Button>
-          </Stack>
-        </Paper>
-      </Backdrop>
-    </RoomContainer>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

@@ -56,6 +56,7 @@ router.post("/signup", async (req, res) => {
 // signin
 router.post("/signin", async (req, res) => {
   try {
+    console.log("Singning in")
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "email and password required" });
@@ -100,11 +101,13 @@ router.post("/signin", async (req, res) => {
 });
 
 router.post('/signout', (req, res) => {
+  console.log("logging out")
   res.clearCookie('token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-  })
+  });
+
   return res.json({ ok: true })
 })
 

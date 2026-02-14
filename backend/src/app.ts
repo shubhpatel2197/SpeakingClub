@@ -3,19 +3,22 @@ import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import authRoutes from './routes/auth'
-import userRoutes from './routes/user' 
+import userRoutes from './routes/user'
 import { requireAuth } from './middleware/auth'
 import groupRoutes from './routes/groups'
 // Import with `import * as Sentry from "@sentry/node"` if you are using ESM
-const Sentry = require("@sentry/node");
-const { nodeProfilingIntegration } = require("@sentry/profiling-node");
-
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
 
 
 Sentry.init({
   dsn: "https://b0fd50628ffc3362da5e7cffd5beed73@o4510820456595456.ingest.us.sentry.io/4510820642324480",
   integrations: [
     nodeProfilingIntegration(),
+    Sentry.httpIntegration(),
+    Sentry.expressIntegration(),
+    Sentry.prismaIntegration(),
+    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
   ],
 
   // Send structured logs to Sentry
@@ -29,15 +32,10 @@ Sentry.init({
   // Setting this option to true will send default PII data to Sentry.
   // For example, automatic IP address collection on events
   sendDefaultPii: true,
+  attachStacktrace: true,
 });
 
-// Profiling happens automatically after setting it up with `Sentry.init()`.
-// All spans (unless those discarded by sampling) will have profiling data attached to them.
-Sentry.startSpan({
-  name: "My Span",
-}, () => {
-  // The code executed here will be profiled
-});
+
 
 
 const app = express()
@@ -48,7 +46,7 @@ app.use(
     origin: [
       'http://localhost:5173',
       'http://localhost:3000',
-      'http://192.168.1.4:5173',  
+      'http://192.168.1.4:5173',
       /^chrome-extension:\/\//,
       /^moz-extension:\/\//,
     ],
@@ -72,10 +70,21 @@ app.use('/auth', authRoutes)
 
 // protected routes
 app.use('/user', requireAuth(), userRoutes)
-app.use('/traces', userRoutes) 
+app.use('/traces', userRoutes)
 app.use('/groups', groupRoutes)
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
+
+app.get('/test/error', (req, res) => {
+  throw new Error('Backend Test Error: ' + new Date().toISOString());
+});
+
+app.get('/test/log', (req, res) => {
+  console.log('Backend Info Log', 'info');
+  console.log('Backend Warning Log', 'warning');
+  console.log(new Error('Backend Captured Error Log'));
+  res.json({ message: 'Logs triggered' });
+});
 
 
 

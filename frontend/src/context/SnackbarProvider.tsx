@@ -1,21 +1,12 @@
 import * as React from 'react'
 import { createContext, useContext, useRef, useState, useCallback } from 'react'
-import { Transition } from 'react-transition-group'
-import { styled, useTheme } from '@mui/material/styles'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import ErrorIcon from '@mui/icons-material/Error'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import InfoIcon from '@mui/icons-material/Info'
-import CloseIcon from '@mui/icons-material/Close'
-import { Snackbar } from '@mui/base/Snackbar'
-import type { SnackbarCloseReason } from '@mui/base/useSnackbar'
-import type { AlertColor } from '@mui/material'
+import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react'
 
-// ---------- Context setup ----------
+type Severity = 'success' | 'error' | 'warning' | 'info'
 
 type SnackbarOptions = {
   message: string
-  severity?: AlertColor
+  severity?: Severity
   duration?: number
 }
 
@@ -31,171 +22,92 @@ export const useSnackbar = () => {
   return ctx
 }
 
-// ---------- Colors & styling ----------
-
-const SEVERITY_STYLES: Record<
-  AlertColor,
-  { bg: string; border: string; color: string; icon: React.ElementType }
+const SEVERITY_CONFIG: Record<
+  Severity,
+  { bg: string; border: string; text: string; icon: React.ElementType }
 > = {
   success: {
-    bg: '#E6F4EA',
-    border: '#2E7D32',
-    color: '#1B5E20',
-    icon: CheckCircleIcon,
+    bg: 'bg-green-900/80',
+    border: 'border-l-green-500',
+    text: 'text-green-200',
+    icon: CheckCircle,
   },
   error: {
-    bg: '#FDECEA',
-    border: '#D32F2F',
-    color: '#B71C1C',
-    icon: ErrorIcon,
+    bg: 'bg-red-900/80',
+    border: 'border-l-red-500',
+    text: 'text-red-200',
+    icon: AlertCircle,
   },
   warning: {
-    bg: '#FFF4E5',
-    border: '#ED6C02',
-    color: '#E65100',
-    icon: WarningAmberIcon,
+    bg: 'bg-amber-900/80',
+    border: 'border-l-amber-500',
+    text: 'text-amber-200',
+    icon: AlertTriangle,
   },
   info: {
-    bg: '#E3F2FD',
-    border: '#0288D1',
-    color: '#01579B',
-    icon: InfoIcon,
+    bg: 'bg-blue-900/80',
+    border: 'border-l-blue-500',
+    text: 'text-blue-200',
+    icon: Info,
   },
 }
-
-const StyledSnackbar = styled(Snackbar)`
-  position: fixed;
-  z-index: 5500;
-  top: 112px;
-  right: 16px;
-  display: block;           /* don't stretch vertically */
-  width: auto;              /* allow content-determined width up to max-width */
-  max-width: 560px;
-  min-width: 300px;
-  height: auto;             /* prevent full-height expansion */
-  pointer-events: none;     /* allow clicks through outer container */
-  align-items: flex-end;    /* ensure content sits toward bottom if flex is used inside */
-`
-
-
-const SnackbarContent = styled('div')<{ severity: AlertColor }>(({ severity }) => {
-  const colors = SEVERITY_STYLES[severity]
-  return {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '12px 16px',
-    backgroundColor: colors.bg,
-    borderLeft: `6px solid ${colors.border}`,
-    borderRadius: 8,
-    color: colors.color,
-    boxShadow: `0 4px 14px rgba(0,0,0,0.12)`,
-    pointerEvents: 'auto', // keep close icon clickable
-    transition: 'transform 300ms ease, opacity 300ms ease',
-  }
-})
-
-const positioningStyles: Record<string, string> = {
-  entering: 'translateX(0)',
-  entered: 'translateX(0)',
-  exiting: 'translateX(150%)',
-  exited: 'translateX(150%)',
-  unmounted: 'translateX(150%)',
-}
-
-// ---------- Provider ----------
 
 export const SnackbarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [open, setOpen] = useState(false)
-  const [exited, setExited] = useState(true)
-  const nodeRef = useRef<HTMLDivElement | null>(null)
-  const keyRef = useRef(0)
-
   const [message, setMessage] = useState('')
-  const [severity, setSeverity] = useState<AlertColor>('success')
-  const [duration, setDuration] = useState<number>(4000)
+  const [severity, setSeverity] = useState<Severity>('success')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const showSnackbar = useCallback(
     (msg: string, options?: Omit<SnackbarOptions, 'message'>) => {
+      // Clear any existing timer
+      if (timerRef.current) clearTimeout(timerRef.current)
+
       setMessage(msg)
       setSeverity(options?.severity ?? 'success')
-      setDuration(options?.duration ?? 4000)
+      setOpen(true)
 
-      // retrigger animation if already open
-      if (open) {
-        keyRef.current += 1
+      timerRef.current = setTimeout(() => {
         setOpen(false)
-        setTimeout(() => setOpen(true), 100)
-      } else {
-        keyRef.current += 1
-        setOpen(true)
-      }
+      }, options?.duration ?? 4000)
     },
-    [open]
+    []
   )
 
-  const handleClose = (_?: any, reason?: SnackbarCloseReason) => {
-    if (reason === 'clickaway') return
+  const handleClose = () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
     setOpen(false)
   }
 
-  const handleOnEnter = () => setExited(false)
-  const handleOnExited = () => setExited(true)
-
-  const Icon = SEVERITY_STYLES[severity].icon
+  const config = SEVERITY_CONFIG[severity]
+  const Icon = config.icon
 
   return (
     <SnackbarContext.Provider value={{ showSnackbar }}>
       {children}
 
-      <StyledSnackbar
-        autoHideDuration={duration}
-        open={open}
-        onClose={handleClose}
-        exited={exited}
+      {/* Snackbar */}
+      <div
+        className={`fixed top-24 right-4 z-[5500] max-w-[560px] min-w-[300px] transition-all duration-300 ${open
+            ? 'translate-x-0 opacity-100'
+            : 'translate-x-[150%] opacity-0 pointer-events-none'
+          }`}
       >
-        <Transition
-          timeout={{ enter: 300, exit: 300 }}
-          in={open}
-          appear
-          unmountOnExit
-          onEnter={handleOnEnter}
-          onExited={handleOnExited}
-          nodeRef={nodeRef}
+        <div
+          className={`flex items-center gap-3 px-4 py-3 rounded-lg border-l-[6px] ${config.bg} ${config.border} ${config.text} shadow-xl backdrop-blur-sm`}
         >
-          {(status) => (
-            <SnackbarContent
-              severity={severity}
-              ref={nodeRef}
-              style={{
-                transform: positioningStyles[status],
-                opacity: open ? 1 : 0,
-              }}
-            >
-              <Icon sx={{ flexShrink: 0, fontSize: 24 }} />
-              <span
-                style={{
-                  flex: 1,
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: '0.95rem',
-                  fontWeight: 500,
-                }}
-              >
-                {message}
-              </span>
-              <CloseIcon
-                sx={{
-                  cursor: 'pointer',
-                  fontSize: 20,
-                  opacity: 0.7,
-                  '&:hover': { opacity: 1 },
-                }}
-                onClick={handleClose}
-              />
-            </SnackbarContent>
-          )}
-        </Transition>
-      </StyledSnackbar>
+          <Icon className="w-5 h-5 shrink-0" />
+          <span className="flex-1 text-sm font-medium font-sans">
+            {message}
+          </span>
+          <button
+            onClick={handleClose}
+            className="shrink-0 opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </SnackbarContext.Provider>
   )
 }

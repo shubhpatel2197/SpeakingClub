@@ -1,197 +1,127 @@
 import React from 'react';
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  IconButton,
-  Box,
-  Container,
-  Menu,
-  MenuItem,
-  useMediaQuery,
-  Link,
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import MenuIcon from '@mui/icons-material/Menu';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthProvider';
+import { useColorMode } from '../../context/ColorModeContext';
+import { Button } from './button';
+import { Menu, X, Sun, Moon } from 'lucide-react';
 
 export default function NavBar() {
   const { user, loading, signOut } = useAuthContext();
+  const { mode, toggleColorMode } = useColorMode();
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
 
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const open = Boolean(anchorEl);
-
-  const handleMenuOpen = (e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
-  const handleMenuClose = () => setAnchorEl(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
 
   const handleSignOut = async () => {
-    handleMenuClose();
+    setMenuOpen(false);
     await signOut();
     navigate('/signin', { replace: true });
   };
 
-  const textColor =
-    theme.palette.mode === 'dark' ? theme.palette.text.primary : 'rgba(0,0,0,0.85)';
-
-  const UserLabel = (
-    <Typography
-      variant="body2"
-      sx={{
-        maxWidth: 200,
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        mr: 2,
-        color: textColor,
-        fontWeight: 500,
-      }}
-      title={user?.name || user?.email || ''}
-    >
-      {user?.name ?? user?.email}
-    </Typography>
-  );
-
   return (
-    <AppBar
-      position="sticky"
-      elevation={0}
-      sx={{
-        backdropFilter: 'blur(8px)',
-        backgroundColor: (t) =>
-          t.palette.mode === 'dark'
-            ? alpha(t.palette.background.default, 0.7)
-            : alpha('#ffffff', 0.9),
-        borderBottom: (t) => `1px solid ${alpha(t.palette.divider, 0.9)}`,
-        color: textColor,
-      }}
-    >
-      <Container maxWidth="lg">
-        <Toolbar disableGutters sx={{ minHeight: { xs: 56, md: 64 } }}>
+    <header className="sticky top-0 z-50 w-full glass">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between h-16">
           {/* Brand */}
-          <Typography
-            variant="h6"
-            component={RouterLink}
+          <RouterLink
             to="/"
-            sx={{
-              textDecoration: 'none',
-              color: textColor,
-              fontWeight: 700,
-              letterSpacing: 0.2,
-              mr: 2,
-            }}
+            className="font-display text-xl font-bold gradient-text hover:opacity-80 transition-opacity no-underline"
           >
             SpeakingClub
-          </Typography>
+          </RouterLink>
 
-          <Box sx={{ flex: 1 }} />
+          {/* Desktop nav */}
+          <div className="hidden md:flex items-center gap-3">
+            {/* Theme toggle */}
+            <button
+              onClick={toggleColorMode}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors text-foreground/70 hover:text-foreground"
+              aria-label="Toggle theme"
+            >
+              {mode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
 
-          {loading ? (
-            <Typography variant="body2" sx={{ color: textColor }}>
-              Loading...
-            </Typography>
-          ) : isMdUp ? (
-            // Desktop/tablet
-            user ? (
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {UserLabel}
-                <Button color="inherit" onClick={handleSignOut} sx={{ color: textColor }}>
+            {loading ? (
+              <span className="text-sm text-muted-foreground">Loading...</span>
+            ) : user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-foreground/80 max-w-[200px] truncate">
+                  {user?.name ?? user?.email}
+                </span>
+                <Button variant="ghost" size="sm" onClick={handleSignOut}>
                   Sign out
                 </Button>
-              </Box>
+              </div>
             ) : (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => navigate('/signin')}>
+                  Sign in
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate('/signup')}>
+                  Sign up
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile hamburger */}
+          <div className="md:hidden flex items-center gap-2">
+            <button
+              onClick={toggleColorMode}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors text-foreground/70"
+              aria-label="Toggle theme"
+            >
+              {mode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors text-foreground"
+              aria-label="Menu"
+            >
+              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile dropdown */}
+      {menuOpen && (
+        <div className="md:hidden border-t border-border glass">
+          <div className="px-4 py-3 space-y-2">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : user ? (
+              <>
+                <p className="text-sm font-medium text-foreground/80 truncate">
+                  {user.name ?? user.email}
+                </p>
+                <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleSignOut}>
+                  Sign out
+                </Button>
+              </>
+            ) : (
+              <>
                 <Button
-                  component={RouterLink}
-                  to="/signin"
-                  sx={{ color: textColor }}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => { setMenuOpen(false); navigate('/signin'); }}
                 >
                   Sign in
                 </Button>
                 <Button
-                  component={RouterLink}
-                  to="/signup"
-                  variant="outlined"
-                  sx={{
-                    borderColor: alpha(textColor, 0.4),
-                    color: textColor,
-                    '&:hover': { borderColor: textColor },
-                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => { setMenuOpen(false); navigate('/signup'); }}
                 >
                   Sign up
                 </Button>
-              </Box>
-            )
-          ) : (
-            // Mobile
-            <Box>
-              {user && (
-                <Typography
-                  variant="body2"
-                  sx={{
-                    maxWidth: 140,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: 'inline-block',
-                    mr: 1,
-                    color: textColor,
-                  }}
-                  title={user?.name || user?.email || ''}
-                >
-                  {user?.name ?? user?.email}
-                </Typography>
-              )}
-              <IconButton
-                edge="end"
-                aria-label="menu"
-                onClick={handleMenuOpen}
-                sx={{ color: textColor }}
-              >
-                <MenuIcon />
-              </IconButton>
-              <Menu
-                anchorEl={anchorEl}
-                open={open}
-                onClose={handleMenuClose}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                keepMounted
-              >
-                {user ? (
-                  <>
-                    <MenuItem disabled>{user.name ?? user.email}</MenuItem>
-                    <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
-                  </>
-                ) : (
-                  <>
-                    <MenuItem
-                      onClick={() => {
-                        handleMenuClose();
-                        navigate('/signin');
-                      }}
-                    >
-                      Sign in
-                    </MenuItem>
-                    <MenuItem
-                      onClick={() => {
-                        handleMenuClose();
-                        navigate('/signup');
-                      }}
-                    >
-                      Sign up
-                    </MenuItem>
-                  </>
-                )}
-              </Menu>
-            </Box>
-          )}
-        </Toolbar>
-      </Container>
-    </AppBar>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </header>
   );
 }

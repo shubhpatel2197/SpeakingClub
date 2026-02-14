@@ -1,6 +1,6 @@
-import React from 'react'
-import { Avatar, Box, Typography, SxProps, Theme } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import React from 'react';
+import { cn } from '@/lib/utils';
+import { Avatar, AvatarFallback } from './avatar-ui';
 
 export type Member = {
   id: string
@@ -16,93 +16,73 @@ export type Member = {
 type Props = {
   member?: Member
   index?: number
-  avatarSize?: number // default: 100
-  sxBox?: SxProps<Theme>
-  sxAvatar?: SxProps<Theme>
+  avatarSize?: number
+  sxBox?: any
+  sxAvatar?: any
   withName?: boolean
+}
+
+const colors = [
+  "from-violet-500 to-fuchsia-500",
+  "from-pink-500 to-rose-500",
+  "from-blue-500 to-cyan-500",
+  "from-orange-500 to-amber-500",
+  "from-green-500 to-emerald-500",
+  "from-teal-500 to-cyan-500",
+  "from-indigo-500 to-purple-500",
+  "from-red-500 to-orange-500",
+];
+
+function deterministicColor(name?: string) {
+  const k = name ?? String(Math.random());
+  let h = 0;
+  for (let i = 0; i < k.length; i++) h = k.charCodeAt(i) + ((h << 5) - h);
+  return colors[Math.abs(h) % colors.length];
 }
 
 export default function MemberAvatar({
   member,
-  index,
   avatarSize = 100,
-  sxBox = {},
-  sxAvatar = {},
   withName = true,
 }: Props) {
-  const theme = useTheme()
+  const name = member?.name || 'User';
 
-  // extract from nested user object
-  // const user = member?.user
-  const name = member?.name || 'User'
-
-  // derive initials from name
   const initials = name
     .split(' ')
     .map((s) => s[0])
     .slice(0, 2)
     .join('')
-    .toUpperCase()
+    .toUpperCase();
 
-  const colors = [
-    "#1976D2",
-    "#9C27B0",
-    "#E91E63",
-    "#FF9800",
-    "#4CAF50",
-    "#0097A7",
-    "#795548",
-    "#F44336",
-  ];
-  const k = name ?? String(Math.random());
-  let h = 0;
-  for (let i = 0; i < k.length; i++) h = k.charCodeAt(i) + ((h << 5) - h);
-  const color = colors[Math.abs(h) % colors.length];
+  const gradientClass = deterministicColor(name);
+
+  const sizeStyle = {
+    width: avatarSize,
+    height: avatarSize,
+    fontSize: avatarSize * 0.26,
+  };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: avatarSize + 20,
-        ...sxBox,
-      }}
-    >
+    <div className="flex flex-col items-center justify-center" style={{ width: avatarSize + 20 }}>
       <Avatar
-        sx={{
-          width: avatarSize,
-          height: avatarSize,
-          bgcolor: color,
-          color: 'white',
-          fontSize: avatarSize * 0.26,
-          fontWeight: 600,
-          transition: 'transform 0.2s ease',
-          '&:hover': {
-            transform: 'scale(1.05)',
-          },
-          ...sxAvatar,
-        }}
+        className="ring-2 ring-primary/20 hover:ring-primary/50 hover:scale-105 transition-all duration-200"
+        style={sizeStyle}
       >
-        {initials}
+        <AvatarFallback
+          className={cn("bg-gradient-to-br text-white font-semibold", gradientClass)}
+          style={{ fontSize: avatarSize * 0.26 }}
+        >
+          {initials}
+        </AvatarFallback>
       </Avatar>
 
-      {withName && <Typography
-        variant="body2"
-        sx={{
-          mt: 1,
-          textAlign: 'center',
-          fontSize: '0.8rem',
-          color: theme.palette.text.primary,
-          width: '100%',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {name}
-      </Typography>}
-    </Box>
-  )
+      {withName && (
+        <p
+          className="mt-1 text-center text-xs text-foreground/80 w-full overflow-hidden text-ellipsis whitespace-nowrap"
+        >
+          {name}
+        </p>
+      )}
+    </div>
+  );
 }

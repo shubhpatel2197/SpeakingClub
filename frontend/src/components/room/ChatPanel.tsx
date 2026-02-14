@@ -1,19 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Box,
-  IconButton,
-  Typography,
-  Divider,
-  Stack,
-  List,
-  ListItem,
-  ListItemText,
-  Tooltip,
-  useMediaQuery,
-} from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-import CloseIcon from "@mui/icons-material/Close";
-import SendIcon from "@mui/icons-material/Send";
+import { X, Send } from "lucide-react";
 import MemberAvatar from "../ui/MemberAvatar";
 
 type ChatMessage = { id: string; from: string; text: string; ts: number };
@@ -25,8 +11,8 @@ interface ChatPanelProps {
   onTyping: (on: boolean) => void;
   nameMap?: Record<string, string>;
   selfId?: string;
-  panelWidth?: number;         // width on desktop/tablet (default 340)
-  mobileFullScreen?: boolean;  // if true, takes full screen on mobile
+  panelWidth?: number;
+  mobileFullScreen?: boolean;
 }
 
 const isIOSMobile = () =>
@@ -35,8 +21,8 @@ const isIOSMobile = () =>
   typeof window !== "undefined" &&
   window.innerWidth < 900;
 
-const MIN_HEIGHT = 40;   // one-line comfy height
-const MAX_HEIGHT = 160;  // cap before inner scrolling kicks in
+const MIN_HEIGHT = 40;
+const MAX_HEIGHT = 160;
 
 export default function ChatPanel({
   onClose,
@@ -48,8 +34,13 @@ export default function ChatPanel({
   panelWidth = 340,
   mobileFullScreen = true,
 }: ChatPanelProps) {
-  const theme = useTheme();
-  const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
+  const [isMdUp, setIsMdUp] = useState(window.innerWidth >= 768);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handler = (e: MediaQueryListEvent) => setIsMdUp(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -61,8 +52,6 @@ export default function ChatPanel({
   const [kbInset, setKbInset] = useState(0);
   const [composerH, setComposerH] = useState(0);
 
-  
-
   const updateComposerHeight = () => {
     if (composerRef.current) setComposerH(composerRef.current.offsetHeight || 0);
   };
@@ -70,7 +59,6 @@ export default function ChatPanel({
   const autosize = () => {
     const el = taRef.current;
     if (!el) return;
-    // reset height, measure, then clamp
     el.style.height = "auto";
     const needed = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, el.scrollHeight));
     el.style.height = `${needed}px`;
@@ -78,7 +66,6 @@ export default function ChatPanel({
     updateComposerHeight();
   };
 
-  // init heights
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
@@ -89,7 +76,6 @@ export default function ChatPanel({
     updateComposerHeight();
   }, []);
 
-  // iOS keyboard overlap handling
   useEffect(() => {
     if (!isIOSMobile() || !window.visualViewport) return;
     const vv = window.visualViewport;
@@ -115,7 +101,6 @@ export default function ChatPanel({
     });
   }, [messages, nameMap, selfId]);
 
-  // only autoscroll when near bottom
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -126,10 +111,8 @@ export default function ChatPanel({
   function handleSend() {
     const text = input.trim();
     if (!text) return;
-
     onSend(text);
     setInput("");
-
     const el = taRef.current;
     if (el) {
       el.value = "";
@@ -138,7 +121,6 @@ export default function ChatPanel({
       el.style.height = `${base}px`;
       el.style.overflowY = "hidden";
     }
-
     if (isTyping) {
       setIsTyping(false);
       onTyping(false);
@@ -158,168 +140,91 @@ export default function ChatPanel({
     }
   }
 
-  const widthStyle = isMdUp
-    ? `${panelWidth}px`
-    : mobileFullScreen
-    ? "100%"
-    : `${panelWidth}px`;
+  const widthStyle = isMdUp ? `${panelWidth}px` : mobileFullScreen ? "100%" : `${panelWidth}px`;
 
   return (
-    <Box
-      sx={{
-        width: widthStyle,
-        borderLeft: isMdUp ? "1px solid" : "none",
-        borderColor: "divider",
-        backgroundColor: "#0e0e0f",
-        display: "flex",
-        flexDirection: "column",
-        position: isMdUp ? "absolute" : "fixed",
-        right: 0,
-        top: isMdUp ? 0 : 0,
-        bottom: 0,
-        left: isMdUp ? "auto" : 0,
-        color: "#f5f5f5",
-        zIndex: (t) => (isMdUp ? t.zIndex.appBar - 1 : t.zIndex.drawer + 10),
-        boxShadow: isMdUp ? "none" : 8,
-      }}
+    <div
+      className={`flex flex-col bg-[#0e0e12] text-foreground ${isMdUp
+          ? "absolute right-0 top-0 bottom-0 border-l border-border z-40"
+          : "fixed inset-0 z-[100] shadow-xl"
+        }`}
+      style={{ width: widthStyle }}
     >
       {/* Header */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          p: 1.25,
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          backgroundColor: "#1a1a1c",
-        }}
-      >
-        <Typography variant="subtitle1" fontWeight={600} color="#f5f5f5">
-          Chat
-        </Typography>
-        <Tooltip title="Close">
-          <IconButton onClick={onClose} size="small" sx={{ color: "#f5f5f5" }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Box>
-      <Divider sx={{ borderColor: "#2a2a2d" }} />
+      <div className="flex justify-between items-center px-4 py-3 border-b border-border bg-[#141418]">
+        <h3 className="font-display font-semibold text-sm text-foreground">Chat</h3>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-full hover:bg-white/10 transition-colors text-foreground/60 hover:text-foreground"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* Messages */}
-      <Box
+      <div
         ref={listRef}
-        sx={{
-          flex: 1,
-          p: 1,
-          overflowY: "auto",
-          overscrollBehavior: "contain",
-          pb: `${composerH + 8}px`, // leave space for composer
+        className="flex-1 p-3 overflow-y-auto overscroll-contain"
+        style={{
+          paddingBottom: `${composerH + 8}px`,
           ...(isIOSMobile() ? { marginBottom: `${kbInset}px` } : {}),
         }}
       >
         {displayMessages.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ px: 1, pt: 1 }}>
-            Messages will appear here
-          </Typography>
+          <p className="text-sm text-muted-foreground px-1 pt-1">Messages will appear here</p>
         ) : (
-          <List dense sx={{ pr: 1 }}>
+          <div className="space-y-2">
             {displayMessages.map((m) => (
-              <ListItem
+              <div
                 key={m.id}
-                sx={{
-                  alignItems: "flex-start",
-                  px: 0.5,
-                  justifyContent: m.isSelf ? "flex-end" : "flex-start",
-                }}
+                className={`flex items-start gap-2 ${m.isSelf ? "justify-end" : "justify-start"}`}
               >
                 {!m.isSelf && (
-                  <MemberAvatar
-                    member={{ id: m.from, name: m.displayName }}
-                    avatarSize={32}
-                    sxBox={{ width: "auto", flexShrink: 0, mr: 0.75 }}
-                    sxAvatar={{ width: 32, height: 32 }}
-                    withName={false}
-                  />
+                  <div className="shrink-0">
+                    <MemberAvatar
+                      member={{ id: m.from, name: m.displayName }}
+                      avatarSize={28}
+                      withName={false}
+                    />
+                  </div>
                 )}
-
-                <Stack
-                  spacing={0.25}
-                  sx={{
-                    maxWidth: "78%",
-                    background: m.isSelf
-                      ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
-                      : "linear-gradient(135deg, #1f2937 0%, #374151 100%)",
-                    color: "#fff",
-                    px: 1.25,
-                    py: 0.75,
-                    borderRadius: 1.5,
-                  }}
+                <div
+                  className={`max-w-[78%] px-3 py-2 rounded-xl text-white ${m.isSelf
+                      ? "bg-gradient-to-br from-green-500 to-green-600"
+                      : "bg-gradient-to-br from-slate-700 to-slate-800"
+                    }`}
                 >
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                    <Typography variant="caption" sx={{ opacity: 0.85 }}>
-                      {m.displayName}
-                    </Typography>
-                    <Tooltip title={new Date(m.ts).toLocaleTimeString()}>
-                      <Typography variant="caption" color="white">
-                        {new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </Typography>
-                    </Tooltip>
-                  </Stack>
-                  <ListItemText
-                    primaryTypographyProps={{
-                      variant: "body2",
-                      sx: { wordBreak: "break-word", whiteSpace: "pre-wrap" },
-                    }}
-                    primary={m.text}
-                    sx={{ m: 0 }}
-                  />
-                </Stack>
-              </ListItem>
+                  <div className="flex justify-between items-center gap-2 mb-0.5">
+                    <span className="text-[10px] font-medium opacity-80">{m.displayName}</span>
+                    <span className="text-[10px] opacity-60" title={new Date(m.ts).toLocaleTimeString()}>
+                      {new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <p className="text-sm break-words whitespace-pre-wrap">{m.text}</p>
+                </div>
+              </div>
             ))}
-          </List>
+          </div>
         )}
-      </Box>
+      </div>
 
       {/* Composer */}
-      <Divider sx={{ borderColor: "#2a2a2d" }} />
-      <Box
+      <div
         ref={composerRef}
-        sx={{
-          p: 1,
-          backgroundColor: "#2b2b2e",
-          overflowX: "hidden",
-          position: isIOSMobile() ? "fixed" : "static",
-          left: isIOSMobile() ? 0 : undefined,
-          right: isIOSMobile() ? 0 : undefined,
-          bottom: isIOSMobile() ? 0 : undefined,
-          pb: isIOSMobile() ? `calc(1rem + env(safe-area-inset-bottom, 0px))` : 1,
-          zIndex: isIOSMobile() ? (t) => t.zIndex.appBar + 2 : "auto",
-        }}
+        className={`p-2 bg-[#1a1a1e] border-t border-border ${isIOSMobile() ? "fixed left-0 right-0 bottom-0 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-[110]" : ""
+          }`}
       >
-        <Stack
-          direction="row"
-          spacing={1}
-          alignItems="center"
-          sx={{
-            width: "100%",
-            maxWidth: "100%",
-            flexWrap: "nowrap",
-            overflow: "hidden",
-            "& > *": { minWidth: 0 },
-          }}
-        >
-          <Box
-            component="textarea"
+        <div className="flex items-center gap-2 w-full">
+          <textarea
             ref={taRef}
             rows={1}
             placeholder="Type a message"
             value={input}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+            onChange={(e) => {
               handleChange(e.target.value);
               autosize();
             }}
-            onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
@@ -329,45 +234,17 @@ export default function ChatPanel({
             inputMode="text"
             spellCheck={false}
             autoCapitalize="none"
-            style={{ resize: "none" }}
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              display: "block",
-              boxSizing: "border-box",     // important for stable autosize
-              backgroundColor: "#2b2b2e",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,0.12)",
-              outline: "none",
-              borderRadius: 1,
-              px: 1.25,
-              pt: 0.75,
-              pb: 0.75,
-              fontSize: 16,                // iOS: prevent zoom
-              lineHeight: "20px",          // crisp top-aligned typing
-              fontFamily: "inherit",
-              overflowY: "hidden",         // autosize until MAX then switch to auto
-              maxHeight: MAX_HEIGHT,
-              WebkitTextSizeAdjust: "100%",
-              "::placeholder": { color: "#fff", opacity: 0.6 },
-            }}
+            className="flex-1 min-w-0 bg-[#1a1a1e] text-foreground border border-border rounded-xl px-3 py-2 text-[16px] leading-5 font-sans outline-none resize-none placeholder:text-foreground/40 focus:ring-1 focus:ring-primary/40 focus:border-primary/40 transition-all"
+            style={{ maxHeight: MAX_HEIGHT }}
           />
-
-          <IconButton
+          <button
             onClick={handleSend}
-            sx={{
-              flex: "0 0 auto",
-              color: "#fff",
-              backgroundColor: "#2b2b2e",
-              border: "1px solid rgba(255,255,255,0.24)",
-              "&:hover": { backgroundColor: "#2b2b2e" },
-            }}
+            className="shrink-0 p-2.5 rounded-xl border border-border text-foreground hover:bg-white/5 hover:text-primary transition-all"
           >
-            <SendIcon />
-          </IconButton>
-        </Stack>
-      </Box>
-    </Box>
-  )
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
-
