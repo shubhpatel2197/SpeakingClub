@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useMediaQuery } from "../hooks/use-media-query" // I'll create this next
+// import { useMediaQuery } from "../hooks/use-media-query" // I'll create this next
 // Actually, standard shadcn tooltip doesn't use media query, but I need it for the logic in RandomChatRoom.
 
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
