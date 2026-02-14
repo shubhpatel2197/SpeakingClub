@@ -1266,16 +1266,21 @@ export function useMediasoup() {
     else await startScreenShare();
   }, [isSharingScreen, startScreenShare, stopScreenShare]);
 
-  /** Leave room */
-  const leaveRoom = useCallback(() => {
+  /** Clean up media and disconnect socket, but do NOT navigate */
+  const cleanupAndDisconnect = useCallback(() => {
     try {
       socketRef.current?.emit("leaveRoom");
     } catch {}
     if (isSharingScreen) stopScreenShare();
     cleanupAll();
     window.removeEventListener("beforeunload", cleanupAll);
-    navigate("/", { replace: true });
   }, [cleanupAll, isSharingScreen, stopScreenShare]);
+
+  /** Leave room */
+  const leaveRoom = useCallback(() => {
+    cleanupAndDisconnect();
+    navigate("/", { replace: true });
+  }, [cleanupAndDisconnect]);
 
   /** Mic toggle (producer pause/resume) */
   const toggleMic = useCallback(async () => {
@@ -1336,6 +1341,7 @@ export function useMediasoup() {
   return {
     joinRoom,
     leaveRoom,
+    cleanupAndDisconnect,
     toggleMic,
     micOn,
     participants,

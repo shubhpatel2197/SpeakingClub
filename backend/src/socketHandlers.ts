@@ -5,10 +5,21 @@ import jwt from "jsonwebtoken";
 import {
   getOrCreateRoom,
   getRoom,
+  closeRoom,
   transportToRoom,
 } from "./mediasoup/roomManager";
 import { removeUserFromGroup, joinGroupCore } from "./services/groupService";
 import prisma from "./lib/prisma";
+import {
+  enqueue,
+  dequeue,
+  dequeueByUserId,
+  endSession,
+  getSession,
+  getUserSession,
+  getPartnerSocketId,
+  getPartnerName,
+} from "./randomChatQueue";
 
 type JwtPayload = {
   userId: string;
@@ -26,6 +37,7 @@ type AuthedSocket = Socket & {
   data: {
     user?: AuthedUser;
     roomId?: string;
+    randomChatRoomId?: string;
     sendTransportId?: string;
     recvTransportId?: string;
     transports?: Set<string>;
@@ -133,7 +145,9 @@ export function attachSocketServer(io: IOServer) {
             console.log("[SOCKET] replacing existing", existing.id);
 
             try {
-              await removeUserFromGroup(existing.data.user.id, roomId);  
+              if (!roomId.startsWith("randomchat:")) {
+                await removeUserFromGroup(existing.data.user.id, roomId);
+              }
               await cleanupPeer(existing as AuthedSocket, io);
             } catch (e) {
               console.error("removeUserFromGroup (pre-emit) failed:", e);
@@ -200,14 +214,17 @@ export function attachSocketServer(io: IOServer) {
               (u as AuthedUser).name ?? (u as AuthedUser).email ?? socket.id,
           });
 
-          await joinGroupCore(prisma, {
-            userId: socket.data.user!.id,
-            groupId: roomId,
-            name: socket.data.user!.name || "User",
-          }).catch((e) => {
-            console.error("Error adding user to group on joinRoom:", e);
-            cb?.({ error: "Failed to join group" });
-          });
+          // Skip group membership for ephemeral random-chat rooms
+          if (!roomId.startsWith("randomchat:")) {
+            await joinGroupCore(prisma, {
+              userId: socket.data.user!.id,
+              groupId: roomId,
+              name: socket.data.user!.name || "User",
+            }).catch((e) => {
+              console.error("Error adding user to group on joinRoom:", e);
+              cb?.({ error: "Failed to join group" });
+            });
+          }
 
           cb?.({ ok: true });
           console.log("[SRV] joinRoom ok", { roomId, sid: socket.id });
@@ -533,12 +550,174 @@ export function attachSocketServer(io: IOServer) {
       }
     );
 
+    /** ---------- Random Chat matching flow ---------- */
+
+    socket.on("randomChat:join", (_, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      const result = enqueue({
+        socketId: socket.id,
+        userId: user.id,
+        name: user.name || user.email || "Anonymous",
+        joinedAt: Date.now(),
+      });
+
+      if (result.matched) {
+        const { roomId, partner } = result;
+        socket.data.randomChatRoomId = roomId;
+
+        // Notify this user
+        socket.emit("randomChat:matched", {
+          roomId,
+          partnerName: partner.name,
+        });
+
+        // Notify the partner
+        const partnerSocket = io.sockets.sockets.get(partner.socketId) as
+          | AuthedSocket
+          | undefined;
+        if (partnerSocket) {
+          partnerSocket.data.randomChatRoomId = roomId;
+          partnerSocket.emit("randomChat:matched", {
+            roomId,
+            partnerName: user.name || user.email || "Anonymous",
+          });
+        }
+
+        console.log("[RANDOM] matched", user.id, "with", partner.userId, "room=", roomId);
+      } else {
+        socket.emit("randomChat:waiting");
+        console.log("[RANDOM] queued", user.id);
+      }
+
+      cb?.({ ok: true });
+    });
+
+    socket.on("randomChat:next", async (_, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      const currentRoomId = socket.data.randomChatRoomId;
+      if (currentRoomId) {
+        // Notify partner they were skipped
+        const partnerSid = getPartnerSocketId(currentRoomId, user.id);
+        if (partnerSid) {
+          const partnerSocket = io.sockets.sockets.get(partnerSid) as
+            | AuthedSocket
+            | undefined;
+          if (partnerSocket) {
+            partnerSocket.emit("randomChat:partnerLeft");
+            partnerSocket.data.randomChatRoomId = undefined;
+          }
+        }
+
+        // Clean up the mediasoup room
+        endSession(currentRoomId);
+        await cleanupPeer(socket, io);
+        try { await closeRoom(currentRoomId); } catch {}
+      }
+
+      // Re-enqueue
+      const result = enqueue({
+        socketId: socket.id,
+        userId: user.id,
+        name: user.name || user.email || "Anonymous",
+        joinedAt: Date.now(),
+      });
+
+      if (result.matched) {
+        const { roomId, partner } = result;
+        socket.data.randomChatRoomId = roomId;
+
+        socket.emit("randomChat:matched", {
+          roomId,
+          partnerName: partner.name,
+        });
+
+        const partnerSocket = io.sockets.sockets.get(partner.socketId) as
+          | AuthedSocket
+          | undefined;
+        if (partnerSocket) {
+          partnerSocket.data.randomChatRoomId = roomId;
+          partnerSocket.emit("randomChat:matched", {
+            roomId,
+            partnerName: user.name || user.email || "Anonymous",
+          });
+        }
+
+        console.log("[RANDOM] next → matched", user.id, "with", partner.userId);
+      } else {
+        socket.emit("randomChat:waiting");
+        console.log("[RANDOM] next → queued", user.id);
+      }
+
+      cb?.({ ok: true });
+    });
+
+    socket.on("randomChat:leave", async (_, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      // Remove from queue if waiting
+      dequeue(socket.id);
+      dequeueByUserId(user.id);
+
+      const currentRoomId = socket.data.randomChatRoomId;
+      if (currentRoomId) {
+        // Notify partner
+        const partnerSid = getPartnerSocketId(currentRoomId, user.id);
+        if (partnerSid) {
+          const partnerSocket = io.sockets.sockets.get(partnerSid) as
+            | AuthedSocket
+            | undefined;
+          if (partnerSocket) {
+            partnerSocket.emit("randomChat:partnerLeft");
+            partnerSocket.data.randomChatRoomId = undefined;
+          }
+        }
+
+        endSession(currentRoomId);
+        await cleanupPeer(socket, io);
+        try { await closeRoom(currentRoomId); } catch {}
+        socket.data.randomChatRoomId = undefined;
+      }
+
+      cb?.({ ok: true });
+      console.log("[RANDOM] leave", user.id);
+    });
+
     /** Leave & cleanup */
     socket.on("leaveRoom", async () => {
       await cleanupPeer(socket, io);
     });
     socket.on("disconnecting", async () => {
+      // Handle random chat cleanup on disconnect
+      const user = socket.data.user;
+      const rcRoomId = socket.data.randomChatRoomId;
+      if (user) {
+        dequeue(socket.id);
+        dequeueByUserId(user.id);
+        if (rcRoomId) {
+          const partnerSid = getPartnerSocketId(rcRoomId, user.id);
+          if (partnerSid) {
+            const partnerSocket = io.sockets.sockets.get(partnerSid) as
+              | AuthedSocket
+              | undefined;
+            if (partnerSocket) {
+              partnerSocket.emit("randomChat:partnerLeft");
+              partnerSocket.data.randomChatRoomId = undefined;
+            }
+          }
+          endSession(rcRoomId);
+          socket.data.randomChatRoomId = undefined;
+          // closeRoom after cleanupPeer
+        }
+      }
       await cleanupPeer(socket, io);
+      if (rcRoomId) {
+        try { await closeRoom(rcRoomId); } catch {}
+      }
     });
     socket.on("disconnect", () => {
       console.log("[SOCKET] disconnected", socket.id);
@@ -597,8 +776,9 @@ export function attachSocketServer(io: IOServer) {
       await socket.leave(roomId);
     } catch {}
 
+    // Skip group membership cleanup for ephemeral random-chat rooms
     const userId = socket.data.user?.id;
-    if (userId) {
+    if (userId && !roomId.startsWith("randomchat:")) {
       await removeUserFromGroup(userId, roomId).catch((e) => {
         console.error("Error removing user from group on disconnect:", e);
       });

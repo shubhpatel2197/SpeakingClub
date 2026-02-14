@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import MenuIcon from '@mui/icons-material/Menu';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthProvider';
 
@@ -87,6 +88,32 @@ export default function NavBar() {
           >
             SpeakingClub
           </Typography>
+
+          {user && (
+            <Button
+              component={RouterLink}
+              to="/random"
+              startIcon={<ShuffleIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: '#fff',
+                fontWeight: 600,
+                borderRadius: 50,
+                px: 2,
+                py: 0.5,
+                textTransform: 'none',
+                fontSize: '0.85rem',
+                boxShadow: '0 2px 12px rgba(102, 126, 234, 0.3)',
+                display: { xs: 'none', md: 'inline-flex' },
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
+                  boxShadow: '0 4px 20px rgba(102, 126, 234, 0.45)',
+                },
+              }}
+            >
+              Random Chat
+            </Button>
+          )}
 
           <Box sx={{ flex: 1 }} />
 
@@ -165,6 +192,14 @@ export default function NavBar() {
                 {user ? (
                   <>
                     <MenuItem disabled>{user.name ?? user.email}</MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleMenuClose();
+                        navigate('/random');
+                      }}
+                    >
+                      Random Chat
+                    </MenuItem>
                     <MenuItem onClick={handleSignOut}>Sign out</MenuItem>
                   </>
                 ) : (
