@@ -5,6 +5,7 @@ import SignUp from './components/auth/SignUp'
 import './index.css'
 import { useAuthContext } from './context/AuthProvider'
 import Home from './pages/Home'
+import RandomChat from './pages/RandomChat'
 import NavBar from './components/ui/Navbar'
 import RoomRouterWrapper from "./wrapper/RoomRouterWrapper";
 
@@ -62,6 +63,18 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Random chat (protected) */}
+          <Route
+            path="/random"
+            element={
+              <ProtectedRoute>
+                <RandomChat />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Room route (protected) - lazy loaded */}
           <Route
             path="/room/:id"
             element={
