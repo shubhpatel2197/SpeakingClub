@@ -20,7 +20,6 @@ type AuthOptions = {
 export function requireAuth(options: AuthOptions = { requireUser: true }) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      console.log("HI")
       const token =
         req.cookies?.token ||
         // fallback: Authorization header (Bearer)
@@ -46,7 +45,7 @@ export function requireAuth(options: AuthOptions = { requireUser: true }) {
       if (options.requireUser) {
         const user = await prisma.user.findUnique({
           where: { id: payload.userId },
-          select: { id: true, email: true, name: true, createdAt: true },
+          select: { id: true, email: true, name: true, avatar: true, gender: true, interests: true, agreedToTerms: true, createdAt: true },
         })
 
         if (!user) {
@@ -101,7 +100,7 @@ export async function verifyTokenFromRequest(req: IncomingMessage) {
     // 4) Lookup user in DB
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true, name: true },
+      select: { id: true, email: true, name: true, gender: true },
     })
 
     if (!user) {

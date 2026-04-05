@@ -5,10 +5,11 @@
   "workspaces": [
     "shared",
     "frontend",
+    "next-frontend",
     "backend"
   ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter @app/backend run dev\" \"pnpm --filter @app/frontend run dev\"",
+    "dev": "concurrently \"pnpm --filter @app/backend run dev\" \"pnpm --filter @app/next-frontend run dev\"",
     "build": "pnpm -r -w build",
     "install:all": "pnpm install"
   },

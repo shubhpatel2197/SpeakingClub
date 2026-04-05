@@ -31,7 +31,7 @@ type JwtPayload = {
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
-type AuthedUser = { id: string; name?: string; email?: string };
+type AuthedUser = { id: string; name?: string; email?: string; avatar?: string | null };
 
 type AuthedSocket = Socket & {
   data: {
@@ -82,7 +82,14 @@ function findSocketInRoomByUser(
 function getUserFromHandshake(socket: Socket): AuthedUser | null {
   const raw = socket.handshake?.headers?.cookie || "";
   const cookies = parseCookie(raw || "");
-  const token = cookies.token;
+  const authToken =
+    typeof socket.handshake.auth?.token === "string"
+      ? socket.handshake.auth.token
+      : undefined;
+  const headerToken = socket.handshake.headers.authorization?.startsWith("Bearer ")
+    ? socket.handshake.headers.authorization.split(" ")[1]
+    : undefined;
+  const token = cookies.token || authToken || headerToken;
   if (!token) return null;
   try {
     const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
@@ -104,10 +111,21 @@ function findOwnerOfProducer(io: IOServer, producerId: string) {
 
 export function attachSocketServer(io: IOServer) {
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const s = socket as AuthedSocket;
     const user = getUserFromHandshake(socket);
     if (!user) return next(new Error("unauthorized"));
+    // Fetch avatar from DB
+    try {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { avatar: true, name: true },
+      });
+      if (dbUser) {
+        user.avatar = dbUser.avatar || null;
+        if (dbUser.name) user.name = dbUser.name;
+      }
+    } catch {}
     s.data.user = user;
     next();
   });
@@ -119,6 +137,8 @@ export function attachSocketServer(io: IOServer) {
 
     socket.on("groups:subscribe", () => {
       socket.join("groups");
+      const room = io.sockets.adapter.rooms.get("groups");
+      console.log("[SOCKET] groups:subscribe", socket.id, "room size:", room?.size);
       socket.emit("groups:refresh");
     });
 
@@ -132,17 +152,25 @@ export function attachSocketServer(io: IOServer) {
       async ({ roomId }: { roomId: string }, cb?: (res: any) => void) => {
         try {
           const room = await getOrCreateRoom(roomId);
-          await socket.join(roomId);
           socket.data.roomId = roomId;
 
+          // Check for duplicate BEFORE joining the room so we don't find ourselves
           const existing = findSocketInRoomByUser(
             io,
             roomId,
             socket.data.user.id
           );
 
-          if (existing && existing.id !== socket.id) {
+          await socket.join(roomId);
+
+          if (existing && existing.id !== socket.id && existing.connected) {
             console.log("[SOCKET] replacing existing", existing.id);
+
+            // Tell the old client it was replaced BEFORE cleanup
+            existing.emit("session:replaced", {
+              roomId,
+              by: "another device/session",
+            });
 
             try {
               if (!roomId.startsWith("randomchat:")) {
@@ -151,13 +179,7 @@ export function attachSocketServer(io: IOServer) {
               await cleanupPeer(existing as AuthedSocket, io);
             } catch (e) {
               console.error("removeUserFromGroup (pre-emit) failed:", e);
-              // You can decide to fail the join here if your policy requires it.
             }
-            // Tell the old client it was replaced
-            existing.emit("session:replaced", {
-              roomId,
-              by: "another device/session",
-            });
           }
 
           const peers = Array.from(io.sockets.adapter.rooms.get(roomId) || [])
@@ -169,6 +191,7 @@ export function attachSocketServer(io: IOServer) {
                 peerId: sid,
                 userId: (u as AuthedUser).id,
                 name: (u as AuthedUser).name ?? (u as AuthedUser).email ?? sid,
+                avatar: (u as AuthedUser).avatar || null,
               };
             });
 
@@ -212,6 +235,7 @@ export function attachSocketServer(io: IOServer) {
             userId: (u as AuthedUser).id,
             name:
               (u as AuthedUser).name ?? (u as AuthedUser).email ?? socket.id,
+            avatar: (u as AuthedUser).avatar || null,
           });
 
           // Skip group membership for ephemeral random-chat rooms
@@ -570,6 +594,7 @@ export function attachSocketServer(io: IOServer) {
         // Notify this user
         socket.emit("randomChat:matched", {
           roomId,
+          partnerId: partner.userId,
           partnerName: partner.name,
         });
 
@@ -581,9 +606,15 @@ export function attachSocketServer(io: IOServer) {
           partnerSocket.data.randomChatRoomId = roomId;
           partnerSocket.emit("randomChat:matched", {
             roomId,
+            partnerId: user.id,
             partnerName: user.name || user.email || "Anonymous",
           });
         }
+
+        // Persist match to DB
+        prisma.matchHistory.create({
+          data: { user1Id: user.id, user2Id: partner.userId },
+        }).catch((e) => console.error("[RANDOM] failed to persist match:", e));
 
         console.log("[RANDOM] matched", user.id, "with", partner.userId, "room=", roomId);
       } else {
@@ -632,6 +663,7 @@ export function attachSocketServer(io: IOServer) {
 
         socket.emit("randomChat:matched", {
           roomId,
+          partnerId: partner.userId,
           partnerName: partner.name,
         });
 
@@ -642,9 +674,15 @@ export function attachSocketServer(io: IOServer) {
           partnerSocket.data.randomChatRoomId = roomId;
           partnerSocket.emit("randomChat:matched", {
             roomId,
+            partnerId: user.id,
             partnerName: user.name || user.email || "Anonymous",
           });
         }
+
+        // Persist match to DB
+        prisma.matchHistory.create({
+          data: { user1Id: user.id, user2Id: partner.userId },
+        }).catch((e) => console.error("[RANDOM] failed to persist match:", e));
 
         console.log("[RANDOM] next → matched", user.id, "with", partner.userId);
       } else {

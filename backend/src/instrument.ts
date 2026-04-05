@@ -1,11 +1,14 @@
-// Import with `import * as Sentry from "@sentry/node"` if you are using ESM
 const Sentry = require("@sentry/node");
 const { nodeProfilingIntegration } = require("@sentry/profiling-node");
 
 Sentry.init({
-  dsn: "https://ec462e9c403eb212f440121d8e68d709@o4510820456595456.ingest.us.sentry.io/4510820583342080",
+  dsn: "https://b0fd50628ffc3362da5e7cffd5beed73@o4510820456595456.ingest.us.sentry.io/4510820642324480",
   integrations: [
     nodeProfilingIntegration(),
+    Sentry.httpIntegration(),
+    Sentry.expressIntegration(),
+    Sentry.prismaIntegration(),
+    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
   ],
 
   // Send structured logs to Sentry
@@ -19,12 +22,5 @@ Sentry.init({
   // Setting this option to true will send default PII data to Sentry.
   // For example, automatic IP address collection on events
   sendDefaultPii: true,
-});
-
-// Profiling happens automatically after setting it up with `Sentry.init()`.
-// All spans (unless those discarded by sampling) will have profiling data attached to them.
-Sentry.startSpan({
-  name: "My Span",
-}, () => {
-  // The code executed here will be profiled
+  attachStacktrace: true,
 });

@@ -48,12 +48,15 @@ export async function createGroup(req: Request, res: Response) {
         max_members,
         owner: { connect: { id: userId } },
       },
-      include: { memberships: true },
+      include: {
+        owner: { select: { id: true, name: true, email: true, avatar: true } },
+        memberships: true,
+      },
     });
-    // emit once more if you want, but joinGroupCore already emitted upsert
-    // io.to('groups').emit('groups:upsert', { group: result })
 
-    return res.status(201).json({ group: group });
+    io.to("groups").emit("groups:created", { group });
+
+    return res.status(201).json({ group });
   } catch (err: any) {
     console.error(err);
     if (
@@ -77,13 +80,15 @@ export async function listGroups(req: Request, res: Response) {
   if (language) where.language = String(language);
   if (level) where.level = String(level);
 
-  const groups = await prisma.group.findMany({
+  const rawGroups = await prisma.group.findMany({
+    orderBy: { createdAt: "desc" },
     include: {
       owner: {
         select: {
           id: true,
           name: true,
           email: true,
+          avatar: true,
         },
       },
       memberships: {
@@ -93,12 +98,25 @@ export async function listGroups(req: Request, res: Response) {
               id: true,
               name: true,
               email: true,
+              avatar: true,
             },
           },
         },
       },
     },
   });
+
+  // Flatten memberships: id = userId, pull name/email/avatar from user record
+  const groups = rawGroups.map((g) => ({
+    ...g,
+    memberships: g.memberships.map((m) => ({
+      id: m.user.id,
+      name: m.user.name || m.name,
+      email: m.user.email,
+      avatar: m.user.avatar,
+      role: m.role,
+    })),
+  }));
 
   res.json({ groups });
 }

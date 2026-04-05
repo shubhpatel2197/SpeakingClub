@@ -1,5 +1,6 @@
 // backend/src/index.ts
 
+import './instrument'
 import http from 'http'
 import app from './app'
 import { Server as IOServer } from 'socket.io'

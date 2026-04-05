@@ -8,14 +8,58 @@ datasource db {
 }
 
 model User {
-  id         String      @id @default(uuid())
-  email      String      @unique
-  password   String?
-  name       String?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @default(now())
-  ownedGroup Group?      @relation("GroupOwner")
-  membership Membership?
+  id              String          @id @default(uuid())
+  email           String          @unique
+  password        String?
+  name            String?
+  avatar          String?
+  gender          Gender?
+  interests       String[]        @default([])
+  agreedToTerms   Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @default(now())
+  ownedGroup      Group?          @relation("GroupOwner")
+  membership      Membership?
+  sentFriends     Friend[]        @relation("FriendFrom")
+  receivedFriends Friend[]        @relation("FriendTo")
+  matchesAsUser1  MatchHistory[]  @relation("MatchUser1")
+  matchesAsUser2  MatchHistory[]  @relation("MatchUser2")
+}
+
+model Friend {
+  id        String       @id @default(uuid())
+  fromId    String
+  toId      String
+  status    FriendStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+  from      User         @relation("FriendFrom", fields: [fromId], references: [id])
+  to        User         @relation("FriendTo", fields: [toId], references: [id])
+
+  @@unique([fromId, toId])
+  @@index([toId])
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model MatchHistory {
+  id        String   @id @default(uuid())
+  user1Id   String
+  user2Id   String
+  user1     User     @relation("MatchUser1", fields: [user1Id], references: [id])
+  user2     User     @relation("MatchUser2", fields: [user2Id], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([user1Id])
+  @@index([user2Id])
+}
+
+enum Gender {
+  MALE
+  FEMALE
 }
 
 model Group {

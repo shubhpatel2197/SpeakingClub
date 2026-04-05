@@ -1,6 +1,7 @@
 packages:
   - shared
   - frontend
+  - next-frontend
   - backend
 
 ignoredBuiltDependencies:

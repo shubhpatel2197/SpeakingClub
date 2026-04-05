@@ -18,7 +18,12 @@ export async function removeUserFromGroup(userId: string, groupId: string) {
 
   // non-owner path
   const membership = await prisma.membership.findUnique({ where: { userId } });
-  
+
+  if (!membership) {
+    console.log("No membership found for user", userId, "in group", groupId);
+    return { ok: true };
+  }
+
   console.log(
     "Removing membership",
     membership.id,
@@ -29,12 +34,7 @@ export async function removeUserFromGroup(userId: string, groupId: string) {
   );
   await prisma.membership.delete({ where: { id: membership.id } });
 
-  const groupUpdated = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: { memberships: true },
-  });
-
-  io.to("groups").emit("groups:upsert", { group: groupUpdated });
+  io.to("groups").emit("groups:memberLeft", { groupId, userId });
   return { ok: true };
 }
 
@@ -73,41 +73,45 @@ export async function joinGroupCore(
 
   const isOwnerOfThis = group.ownerId === userId;
 
-  // Is the user an owner of ANY group?
-  const ownsAny = await prisma.group.findFirst({ where: { ownerId: userId } });
+  // Check existing membership
+  const existing = await prisma.membership.findUnique({ where: { userId } });
 
-  if (!isOwnerOfThis && ownsAny) {
-    const err = new Error("Cannot join a group while owning another group");
+  if (existing && existing.groupId === groupId) {
+    // Already a member of this group — no-op, just emit event and return
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true, avatar: true },
+    });
+    const member = {
+      id: userId,
+      name: userRecord?.name || name || "User",
+      email: userRecord?.email,
+      avatar: userRecord?.avatar || null,
+      role: existing.role,
+    };
+    const groupsRoom = io.sockets.adapter.rooms.get("groups");
+    console.log("[joinGroupCore] already member, emitting to", groupsRoom?.size ?? 0, "sockets");
+    io.to("groups").emit("groups:memberJoined", { groupId, member });
+
+    const updated = await prisma.group.findUnique({
+      where: { id: groupId },
+      include: { memberships: true },
+    });
+    return { membership: existing, group: updated };
+  }
+
+  if (existing) {
+    // Member of a different group — block
+    const err = new Error("You are already a member of another group");
     (err as any).status = 403;
     throw err;
   }
 
-  // Existing membership?
-  // const existingMembership = await prisma.membership.findUnique({
-  //   where: { userId },
-  // });
-
-  // console.log("Existing membership:", existingMembership);
-
-  // if (existingMembership) {
-  //   if (existingMembership.groupId !== groupId) {
-  //     const err = new Error("Already a member of another group");
-  //     (err as any).status = 409;
-  //     throw err;
-  //   } else {
-  //     const err = new Error("Already a member of group");
-  //     (err as any).status = 409;
-  //     throw err;
-  //   }
-  // }
-
-  // Capacity (owners can always join their own group)
-  if (!isOwnerOfThis) {
-    if (group.max_members && group.memberships.length >= group.max_members) {
-      const err = new Error("Group is full");
-      (err as any).status = 403;
-      throw err;
-    }
+  // Capacity check
+  if (!isOwnerOfThis && group.max_members && group.memberships.length >= group.max_members) {
+    const err = new Error("Group is full");
+    (err as any).status = 403;
+    throw err;
   }
 
   const role = isOwnerOfThis ? "owner" : "member";
@@ -121,11 +125,27 @@ export async function joinGroupCore(
     },
   });
 
+  // Fetch user avatar for the socket event
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, email: true, avatar: true },
+  });
+
+  const member = {
+    id: userId,
+    name: userRecord?.name || name || "User",
+    email: userRecord?.email,
+    avatar: userRecord?.avatar || null,
+    role,
+  };
+  const groupsRoom = io.sockets.adapter.rooms.get("groups");
+  console.log("[joinGroupCore] emitting groups:memberJoined to", groupsRoom?.size ?? 0, "sockets in 'groups' room");
+  io.to("groups").emit("groups:memberJoined", { groupId, member });
+
   const updated = await prisma.group.findUnique({
     where: { id: groupId },
     include: { memberships: true },
   });
 
-  io.to("groups").emit("groups:upsert", { group: updated });
   return { membership, group: updated };
 }
