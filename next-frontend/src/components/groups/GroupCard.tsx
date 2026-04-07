@@ -19,6 +19,7 @@ import { useSnackbar } from "../../context/SnackbarProvider";
 import { useGroups } from "../../context/GroupContext";
 import { useRouter } from "next/navigation";
 import axiosInstance from "../../api/axiosInstance";
+import { openLoadingTab } from "../../lib/openLoadingTab";
 
 export type Member = {
   id: string;
@@ -84,16 +85,18 @@ export default function GroupCard({
 
     setJoinLoading(true);
     optimisticJoin(group.id);
+    const newTab = openLoadingTab("Joining room...");
     try {
       await axiosInstance.post(`/api/groups/${group.id}/join`, { withCredentials: true });
-      const roomUrl = `/room/${group.id}`;
-      window.open(roomUrl, "_blank", "noopener,noreferrer");
+      if (newTab) newTab.location.href = `/room/${group.id}`;
+      else router.push(`/room/${group.id}`);
     } catch (err: any) {
       // 409 = already a member, still open the room
       if (err?.response?.status === 409) {
-        const roomUrl = `/room/${group.id}`;
-        window.open(roomUrl, "_blank", "noopener,noreferrer");
+        if (newTab) newTab.location.href = `/room/${group.id}`;
+        else router.push(`/room/${group.id}`);
       } else {
+        if (newTab) newTab.close();
         optimisticLeave(group.id);
         showSnackbar(err?.response?.data?.error || "Failed to join group", {
           severity: "error",
@@ -128,6 +131,12 @@ export default function GroupCard({
     optimisticLeave(group.id);
     try {
       await axiosInstance.post(`/api/groups/${group.id}/leave`, { withCredentials: true });
+      // Signal the room tab to disconnect and navigate away
+      if (typeof BroadcastChannel !== "undefined") {
+        const ch = new BroadcastChannel(`room:${group.id}`);
+        ch.postMessage({ type: "leave" });
+        ch.close();
+      }
       onLeaveSuccess?.(group.id);
     } catch (err: any) {
       optimisticJoin(group.id);
@@ -200,14 +209,25 @@ export default function GroupCard({
 
       {!hideJoin && (
         <div className="flex justify-end">
-          <Button
-            onClick={handleJoin}
-            disabled={joinLoading}
-            size="sm"
-            className="px-6"
-          >
-            {joinLoading ? "Joining..." : "Join"}
-          </Button>
+          {isAlreadyMember ? (
+            <Button
+              onClick={handleLeave}
+              variant="outline"
+              size="sm"
+              className="px-6 text-destructive border-destructive/30 hover:bg-destructive/10"
+            >
+              Leave
+            </Button>
+          ) : (
+            <Button
+              onClick={handleJoin}
+              disabled={joinLoading}
+              size="sm"
+              className="px-6"
+            >
+              {joinLoading ? "Joining..." : "Join"}
+            </Button>
+          )}
         </div>
       )}
 

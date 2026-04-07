@@ -80,6 +80,24 @@ router.get("/requests", async (req, res) => {
   }
 });
 
+// GET /friends/sent — list outgoing pending requests (IDs of users I sent to)
+router.get("/sent", async (req, res) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const sent = await prisma.friend.findMany({
+      where: { fromId: userId, status: "PENDING" },
+      select: { toId: true },
+    });
+
+    return res.json({ sent: sent.map((s) => s.toId) });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // POST /friends/send — send friend request
 router.post("/send", async (req, res) => {
   try {
@@ -151,6 +169,32 @@ router.post("/accept", async (req, res) => {
     });
 
     return res.json({ friend: updated });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /friends/by-user/:userId — unfriend by partner user id
+router.delete("/by-user/:userId", async (req, res) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const otherId = req.params.userId;
+    const friend = await prisma.friend.findFirst({
+      where: {
+        status: "ACCEPTED",
+        OR: [
+          { fromId: userId, toId: otherId },
+          { fromId: otherId, toId: userId },
+        ],
+      },
+    });
+    if (!friend) return res.status(404).json({ error: "Not found" });
+
+    await prisma.friend.delete({ where: { id: friend.id } });
+    return res.json({ ok: true });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Internal server error" });

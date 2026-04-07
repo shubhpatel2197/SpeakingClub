@@ -108,8 +108,9 @@ export default function ChatPanel({
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - (el.scrollTop + el.clientHeight) < 120;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
   }, [displayMessages.length]);
 
   function handleSend() {
@@ -169,10 +170,7 @@ export default function ChatPanel({
       <div
         ref={listRef}
         className="flex-1 p-3 overflow-y-auto overscroll-contain"
-        style={{
-          paddingBottom: `${composerH + 8}px`,
-          ...(isIOSMobile() ? { marginBottom: `${kbInset}px` } : {}),
-        }}
+        style={isIOSMobile() ? { marginBottom: `${kbInset}px` } : undefined}
       >
         {displayMessages.length === 0 ? (
           <p className="text-sm text-muted-foreground px-1 pt-1">Messages will appear here</p>

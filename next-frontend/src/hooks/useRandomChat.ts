@@ -21,14 +21,30 @@ export function useRandomChat() {
   const [state, setState] = useState<RandomChatState>("idle");
   const [partnerName, setPartnerName] = useState<string | null>(null);
   const [partnerId, setPartnerId] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [searchTime, setSearchTime] = useState(0);
   const [chatDuration, setChatDuration] = useState(0);
+  const [lastMessages, setLastMessages] = useState<any[]>([]);
+  const [lastPartnerAvatar, setLastPartnerAvatar] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoRequeueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRoomIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<any[]>([]);
+  const participantsRef = useRef<any[]>([]);
+  const selfIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => { messagesRef.current = mediasoup.messages; }, [mediasoup.messages]);
+  const lastPartnerAvatarRef = useRef<string | null>(null);
+  useEffect(() => {
+    participantsRef.current = mediasoup.participants;
+    const partner = mediasoup.participants.find(
+      (x: any) => (x.id || x.userId) !== selfIdRef.current
+    );
+    if (partner?.avatar) lastPartnerAvatarRef.current = partner.avatar;
+  }, [mediasoup.participants]);
+  useEffect(() => { selfIdRef.current = user?.id; }, [user?.id]);
 
   // Create/get the signalling socket (separate from the mediasoup socket)
   const getSocket = useCallback((): Socket => {
@@ -51,8 +67,10 @@ export function useRandomChat() {
 
     s.on("randomChat:matched", ({ roomId, partnerId: pId, partnerName: pName }: { roomId: string; partnerId: string; partnerName: string }) => {
       currentRoomIdRef.current = roomId;
+      setRoomId(roomId);
       setPartnerName(pName);
       setPartnerId(pId);
+      lastPartnerAvatarRef.current = null;
       setState("matched");
 
       // Stop search timer, start chat timer
@@ -75,6 +93,10 @@ export function useRandomChat() {
     });
 
     s.on("randomChat:partnerLeft", () => {
+      // Snapshot chat history + partner avatar BEFORE cleanup wipes them
+      setLastMessages([...messagesRef.current]);
+      setLastPartnerAvatar(lastPartnerAvatarRef.current);
+
       setState("partner-left");
 
       // Stop chat timer
@@ -86,18 +108,9 @@ export function useRandomChat() {
       // Cleanup mediasoup
       mediasoup.cleanupAndDisconnect();
       currentRoomIdRef.current = null;
+      setRoomId(null);
 
-      // Auto-requeue after 3 seconds
-      autoRequeueTimerRef.current = setTimeout(() => {
-        if (socketRef.current?.connected) {
-          setSearchTime(0);
-          searchTimerRef.current = setInterval(() => {
-            setSearchTime((prev) => prev + 1);
-          }, 1000);
-          socketRef.current.emit("randomChat:join");
-          setState("searching");
-        }
-      }, 3000);
+      // No auto-requeue — user manually presses Start
     });
 
     return s;
@@ -126,6 +139,7 @@ export function useRandomChat() {
     // Cleanup mediasoup for the current room
     mediasoup.cleanupAndDisconnect();
     currentRoomIdRef.current = null;
+    setRoomId(null);
 
     setState("searching");
     setSearchTime(0);
@@ -166,10 +180,11 @@ export function useRandomChat() {
     setState("idle");
     setPartnerName(null);
     setPartnerId(null);
+    setRoomId(null);
     setSearchTime(0);
     setChatDuration(0);
 
-    router.replace("/");
+    router.replace("/random");
   }, [mediasoup, router]);
 
   const cancelSearch = useCallback(() => {
@@ -209,6 +224,7 @@ export function useRandomChat() {
     state,
     partnerName,
     partnerId,
+    roomId,
     searchTime,
     chatDuration,
     startSearching,
@@ -220,5 +236,8 @@ export function useRandomChat() {
     sendChat: mediasoup.sendChat,
     setTyping: mediasoup.setTyping,
     participants: mediasoup.participants,
+    lastMessages,
+    lastPartnerAvatar,
+    clearLastSnapshot: () => { setLastMessages([]); setLastPartnerAvatar(null); },
   };
 }

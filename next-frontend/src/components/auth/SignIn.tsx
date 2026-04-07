@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useAuthContext } from "../../context/AuthProvider";
 import { useSnackbar } from "../../context/SnackbarProvider";
 import { setAuthToken } from "../../lib/authToken";
+import { getGoogleClientId } from "../../lib/googleAuth";
 import { ArrowRight, CheckCircle2, MessageSquare, Sparkles } from "lucide-react";
 
 
@@ -21,13 +22,22 @@ export default function SignIn() {
   const [emailErrorMessage, setEmailErrorMessage] = React.useState("");
   const [passwordError, setPasswordError] = React.useState(false);
   const [passwordErrorMessage, setPasswordErrorMessage] = React.useState("");
+  const [googleSetupError, setGoogleSetupError] = React.useState("");
   const googleButtonRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
+    const clientId = getGoogleClientId();
+
+    if (!clientId) {
+      console.warn("Google sign-in skipped: NEXT_PUBLIC_GOOGLE_CLIENT_ID is missing.");
+      setGoogleSetupError("Google sign-in is temporarily unavailable. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID and restart the frontend.");
+      return;
+    }
+
     const initGoogle = () => {
       if (window.google && googleButtonRef.current) {
         window.google.accounts.id.initialize({
-          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+          client_id: clientId,
           callback: handleGoogleResponse,
         });
         window.google.accounts.id.renderButton(googleButtonRef.current, {
@@ -259,6 +269,9 @@ export default function SignIn() {
             </div>
 
             <div ref={googleButtonRef} className="w-full flex justify-center" />
+            {googleSetupError ? (
+              <p className="text-center text-xs text-muted-foreground">{googleSetupError}</p>
+            ) : null}
 
             <p className="text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{" "}

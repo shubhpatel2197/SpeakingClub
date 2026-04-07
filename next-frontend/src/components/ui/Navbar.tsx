@@ -6,8 +6,26 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthContext } from '../../context/AuthProvider';
 import { Button } from './button';
-import { Menu, X, Shuffle, LogOut, Settings, Bell } from 'lucide-react';
+import { Menu, X, Shuffle, LogOut, Settings, Bell, Phone } from 'lucide-react';
 import { useFriendRequests } from '../../hooks/useFriendRequests';
+import NotificationPopup from './NotificationPopup';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from './tooltip';
+import { io, Socket } from 'socket.io-client';
+import { getAuthToken } from '../../lib/authToken';
+import { useSnackbar } from '../../context/SnackbarProvider';
 
 function UserAvatar({ user, size = 28 }: { user: { name?: string | null; email?: string; avatar?: string | null }; size?: number }) {
   if (user.avatar) {
@@ -42,17 +60,100 @@ function UserAvatar({ user, size = 28 }: { user: { name?: string | null; email?:
 
 export default function NavBar() {
   const { user, loading, signOut } = useAuthContext();
+  const { showSnackbar } = useSnackbar();
   const router = useRouter();
   const pathname = usePathname();
   const { count: friendReqCount } = useFriendRequests();
 
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
+  const [incomingFriendChat, setIncomingFriendChat] = React.useState<{
+    roomId: string;
+    fromId: string;
+    fromName: string;
+  } | null>(null);
+  const [answeringFriendChat, setAnsweringFriendChat] = React.useState(false);
+  const bellRef = React.useRef<HTMLButtonElement>(null);
+  const friendChatSocketRef = React.useRef<Socket | null>(null);
 
   const handleSignOut = async () => {
-    setMenuOpen(false);
-    await signOut();
-    router.replace('/signin');
+    if (signingOut) return;
+
+    setSigningOut(true);
+    try {
+      setMenuOpen(false);
+      await signOut();
+    } finally {
+      setSigningOut(false);
+      setConfirmSignOutOpen(false);
+    }
   };
+
+  React.useEffect(() => {
+    if (!user) {
+      try {
+        friendChatSocketRef.current?.disconnect();
+      } catch {}
+      friendChatSocketRef.current = null;
+      setIncomingFriendChat(null);
+      return;
+    }
+
+    const socket = io(process.env.NEXT_PUBLIC_API_BASE_URL || '/', {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      auth: {
+        token: getAuthToken(),
+      },
+      reconnection: true,
+    });
+
+    friendChatSocketRef.current = socket;
+
+    socket.on('friendChat:incoming', (payload: { roomId: string; fromId: string; fromName: string }) => {
+      setIncomingFriendChat(payload);
+      setAnsweringFriendChat(false);
+    });
+
+    socket.on('friendChat:ready', ({ roomId }: { roomId: string }) => {
+      setIncomingFriendChat(null);
+      setAnsweringFriendChat(false);
+      router.push(`/room/${encodeURIComponent(roomId)}`);
+    });
+
+    socket.on('friendChat:calling', () => {});
+
+    return () => {
+      socket.removeAllListeners();
+      socket.disconnect();
+      if (friendChatSocketRef.current === socket) {
+        friendChatSocketRef.current = null;
+      }
+    };
+  }, [user, router, showSnackbar]);
+
+  const acceptIncomingFriendChat = () => {
+    if (!incomingFriendChat || !friendChatSocketRef.current || answeringFriendChat) return;
+
+    setAnsweringFriendChat(true);
+    friendChatSocketRef.current.emit('friendChat:accept', { roomId: incomingFriendChat.roomId }, (res: any) => {
+      if (res?.ok) return;
+      setAnsweringFriendChat(false);
+      showSnackbar('Could not join the private chat.', { severity: 'error' });
+    });
+  };
+
+  const declineIncomingFriendChat = React.useCallback(() => {
+    if (!incomingFriendChat || !friendChatSocketRef.current || answeringFriendChat) return;
+
+    friendChatSocketRef.current.emit('friendChat:decline', { roomId: incomingFriendChat.roomId }, () => {
+      setIncomingFriendChat(null);
+      setAnsweringFriendChat(false);
+    });
+  }, [answeringFriendChat, incomingFriendChat]);
 
   return (
     <header className="sticky top-0 z-50 w-full bg-[#0F1115]/90 backdrop-blur-lg border-b border-white/[0.06]">
@@ -94,17 +195,21 @@ export default function NavBar() {
                   Random Chat
                 </Button>
 
-                <button
-                  onClick={() => router.push('/random')}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-                >
-                  <Bell className="w-4 h-4" />
-                  {friendReqCount > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 animate-pulse">
-                      {friendReqCount}
-                    </span>
-                  )}
-                </button>
+                <div className="relative">
+                  <button
+                    ref={bellRef}
+                    onClick={() => setNotifOpen((v) => !v)}
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {friendReqCount > 0 && (
+                      <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1">
+                        {friendReqCount}
+                      </span>
+                    )}
+                  </button>
+                  <NotificationPopup open={notifOpen} onClose={() => setNotifOpen(false)} triggerRef={bellRef} />
+                </div>
 
                 <div className="mx-1 h-5 w-px bg-border" />
 
@@ -118,14 +223,21 @@ export default function NavBar() {
                   </span>
                 </button>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSignOut}
-                  className="ml-1 h-10 w-10 rounded-full p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                </Button>
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmSignOutOpen(true)}
+                        className="ml-1 h-10 w-10 rounded-full p-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Sign out</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </>
             ) : (
               <div className="flex items-center gap-2">
@@ -226,7 +338,7 @@ export default function NavBar() {
                   variant="ghost"
                   size="sm"
                   className="h-11 w-full justify-start rounded-2xl px-4 text-foreground/70 hover:text-foreground relative"
-                  onClick={() => { setMenuOpen(false); router.push('/random'); }}
+                  onClick={() => { setMenuOpen(false); setNotifOpen(true); }}
                 >
                   <Bell className="w-4 h-4 mr-2.5" />
                   Friend Requests
@@ -249,7 +361,7 @@ export default function NavBar() {
                   variant="ghost"
                   size="sm"
                   className="h-11 w-full justify-start rounded-2xl px-4 text-foreground/70 hover:text-foreground"
-                  onClick={handleSignOut}
+                  onClick={() => setConfirmSignOutOpen(true)}
                 >
                   <LogOut className="w-4 h-4 mr-2.5" />
                   Sign out
@@ -278,6 +390,67 @@ export default function NavBar() {
           </div>
         </div>
       )}
+
+      <Dialog open={confirmSignOutOpen} onOpenChange={(open) => !signingOut && setConfirmSignOutOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sign out?</DialogTitle>
+            <DialogDescription>
+              You&apos;ll need to sign in again to access your account.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmSignOutOpen(false)}
+              disabled={signingOut}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleSignOut}
+              disabled={signingOut}
+            >
+              {signingOut ? 'Signing out...' : 'Sign out'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!incomingFriendChat} onOpenChange={(open) => !answeringFriendChat && !open && declineIncomingFriendChat()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-4 w-4" />
+              Incoming chat
+            </DialogTitle>
+            <DialogDescription>
+              {incomingFriendChat?.fromName || 'A friend'} wants to start a private chat with you.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={declineIncomingFriendChat}
+              disabled={answeringFriendChat}
+            >
+              Decline
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              onClick={acceptIncomingFriendChat}
+              disabled={answeringFriendChat}
+            >
+              {answeringFriendChat ? 'Joining...' : 'Accept'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }

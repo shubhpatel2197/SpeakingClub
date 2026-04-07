@@ -1,10 +1,14 @@
 'use client'
 
-import { useEffect, useState } from "react";
-import { MessageSquare, Users, Plus, UserPlus, Bell, Check, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { MessageSquare, Users, Plus, Bell, Check, X, UserMinus, Trash2, Phone } from "lucide-react";
 import { Button } from "../ui/button";
 import MemberAvatar from "../ui/MemberAvatar";
 import axiosInstance from "../../api/axiosInstance";
+import { io, Socket } from "socket.io-client";
+import { getAuthToken } from "../../lib/authToken";
+import { useRouter } from "next/navigation";
+import { useSnackbar } from "../../context/SnackbarProvider";
 
 type FriendEntry = {
   id: string;
@@ -33,6 +37,7 @@ type MatchEntry = {
 type FriendReqsHook = {
   requests: FriendRequest[];
   count: number;
+  acceptedVersion: number;
   fetchRequests: () => Promise<void>;
   accept: (id: string) => Promise<void>;
   reject: (id: string) => Promise<void>;
@@ -42,22 +47,49 @@ type Props = {
   onNewChat: () => void;
   friendReqs: FriendReqsHook;
   matchVersion?: number;
+  friendsVersion?: number;
+  onFriendAccepted?: () => void;
 };
 
-export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }: Props) {
+export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0, friendsVersion = 0, onFriendAccepted }: Props) {
+  const router = useRouter();
+  const { showSnackbar } = useSnackbar();
   const [friends, setFriends] = useState<FriendEntry[]>([]);
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [showRequests, setShowRequests] = useState(false);
+  const [callingFriendId, setCallingFriendId] = useState<string | null>(null);
+  const friendChatSocketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     fetchFriends();
     fetchMatches();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      try {
+        friendChatSocketRef.current?.disconnect();
+      } catch {}
+      friendChatSocketRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (friendReqs.acceptedVersion > 0) {
+      fetchFriends();
+      onFriendAccepted?.();
+    }
+  }, [friendReqs.acceptedVersion, onFriendAccepted]);
+
   // Re-fetch matches when matchVersion changes (on skip / partner-left)
   useEffect(() => {
     if (matchVersion > 0) fetchMatches();
   }, [matchVersion]);
+
+  // Re-fetch friends when friendsVersion changes (e.g., unfriend from chat room)
+  useEffect(() => {
+    if (friendsVersion > 0) fetchFriends();
+  }, [friendsVersion]);
 
   // Load full request list when expanding or when count changes from 0 to >0
   useEffect(() => {
@@ -81,12 +113,99 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }:
   };
 
   const handleAccept = async (requestId: string) => {
+    // Optimistically add to friends list from the request data
+    const req = friendReqs.requests.find((r) => r.id === requestId);
+    if (req) {
+      setFriends((prev) => [
+        {
+          id: requestId, // placeholder; will be corrected on next fetch
+          friendId: req.fromId,
+          name: req.name,
+          avatar: req.avatar,
+          since: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+    }
     await friendReqs.accept(requestId);
-    fetchFriends();
   };
 
   const handleReject = async (requestId: string) => {
     await friendReqs.reject(requestId);
+  };
+
+  const [confirmUnfriend, setConfirmUnfriend] = useState<string | null>(null);
+
+  const handleUnfriend = (friendshipId: string) => {
+    if (confirmUnfriend !== friendshipId) {
+      setConfirmUnfriend(friendshipId);
+      return;
+    }
+    setConfirmUnfriend(null);
+    setFriends((prev) => prev.filter((f) => f.id !== friendshipId));
+    axiosInstance.delete(`/api/friends/${friendshipId}`).catch(() => {});
+  };
+
+  const handleRemoveMatch = (matchId: string) => {
+    setMatches((prev) => prev.filter((m) => m.id !== matchId));
+    axiosInstance.delete(`/api/matches/${matchId}`).catch(() => {});
+  };
+
+  const handleStartFriendChat = (friend: FriendEntry) => {
+    if (callingFriendId) return;
+
+    const socket = io(process.env.NEXT_PUBLIC_API_BASE_URL || "/", {
+      path: "/socket.io",
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+      auth: {
+        token: getAuthToken(),
+      },
+      reconnection: false,
+    });
+
+    friendChatSocketRef.current = socket;
+    setCallingFriendId(friend.friendId);
+
+    const cleanupSocket = () => {
+      try {
+        socket.disconnect();
+      } catch {}
+      if (friendChatSocketRef.current === socket) {
+        friendChatSocketRef.current = null;
+      }
+      setCallingFriendId((prev) => (prev === friend.friendId ? null : prev));
+    };
+
+    socket.on("connect", () => {
+      socket.emit("friendChat:invite", { friendId: friend.friendId }, (res: any) => {
+        if (res?.ok) return;
+
+        const errorMessage =
+          res?.error === "friend_offline"
+            ? `${friend.name || "Your friend"} is offline right now.`
+            : res?.error === "not_friends"
+              ? "You can only start a private chat with accepted friends."
+              : "Could not start a private chat.";
+        showSnackbar(errorMessage, { severity: "error" });
+        cleanupSocket();
+      });
+    });
+
+    socket.on("friendChat:ready", ({ roomId }: { roomId: string }) => {
+      cleanupSocket();
+      router.push(`/room/${encodeURIComponent(roomId)}`);
+    });
+
+    socket.on("friendChat:declined", () => {
+      showSnackbar(`${friend.name || "Your friend"} declined the chat invite.`, { severity: "info" });
+      cleanupSocket();
+    });
+
+    socket.on("connect_error", () => {
+      showSnackbar("Could not connect to start the private chat.", { severity: "error" });
+      cleanupSocket();
+    });
   };
 
   const timeAgo = (dateStr: string) => {
@@ -136,7 +255,7 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }:
             >
               <Bell className={`h-3.5 w-3.5 ${friendReqs.count > 0 ? "text-[#7F9486]" : "text-muted-foreground/50"}`} />
               {friendReqs.count > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 animate-pulse">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1">
                   {friendReqs.count}
                 </span>
               )}
@@ -207,9 +326,9 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }:
             </div>
           ) : (
             friends.map((f) => (
-              <button
+              <div
                 key={f.id}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[#1D2128] transition-colors text-left"
+                className="group/friend w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[#1D2128] transition-colors"
               >
                 <MemberAvatar
                   member={{ id: f.friendId, name: f.name, avatar: f.avatar }}
@@ -219,7 +338,43 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }:
                 <p className="flex-1 text-sm font-medium text-foreground truncate">
                   {f.name || "User"}
                 </p>
-              </button>
+                {confirmUnfriend === f.id ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleUnfriend(f.id)}
+                      className="w-7 h-7 rounded-lg bg-red-500/15 border border-red-400/30 text-red-400 flex items-center justify-center transition-all active:scale-90"
+                      title="Confirm unfriend"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setConfirmUnfriend(null)}
+                      className="w-7 h-7 rounded-lg bg-[#1D2128] border border-border text-muted-foreground flex items-center justify-center hover:text-foreground transition-all active:scale-90"
+                      title="Cancel"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 opacity-0 group-hover/friend:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleStartFriendChat(f)}
+                      disabled={callingFriendId === f.friendId}
+                      className="w-7 h-7 rounded-lg bg-transparent border border-transparent hover:border-[#7F9486]/30 text-muted-foreground/50 hover:text-[#7F9486] flex items-center justify-center transition-all active:scale-90 disabled:opacity-60 disabled:cursor-wait"
+                      title={callingFriendId === f.friendId ? "Calling..." : "Chat with friend"}
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleUnfriend(f.id)}
+                      className="w-7 h-7 rounded-lg bg-transparent border border-transparent hover:border-red-400/30 text-muted-foreground/50 hover:text-red-400 flex items-center justify-center transition-all active:scale-90"
+                      title="Unfriend"
+                    >
+                      <UserMinus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
@@ -245,9 +400,9 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }:
           ) : (
             <div className="space-y-0.5 py-1">
               {matches.map((m) => (
-                <button
+                <div
                   key={m.id}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[#1D2128] transition-colors text-left"
+                  className="group/match w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[#1D2128] transition-colors"
                 >
                   <MemberAvatar
                     member={{ id: m.partnerId, name: m.name, avatar: m.avatar }}
@@ -259,10 +414,17 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0 }:
                       {m.name || "Stranger"}
                     </p>
                   </div>
-                  <span className="text-[10px] text-muted-foreground/50 shrink-0">
+                  <span className="text-[10px] text-muted-foreground/50 shrink-0 group-hover/match:hidden">
                     {timeAgo(m.chatAt)}
                   </span>
-                </button>
+                  <button
+                    onClick={() => handleRemoveMatch(m.id)}
+                    className="hidden group-hover/match:flex w-7 h-7 rounded-lg bg-transparent border border-transparent hover:border-red-400/30 text-muted-foreground/50 hover:text-red-400 items-center justify-center transition-all active:scale-90 shrink-0"
+                    title="Remove match"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           )}

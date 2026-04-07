@@ -38,6 +38,7 @@ type AuthedSocket = Socket & {
     user?: AuthedUser;
     roomId?: string;
     randomChatRoomId?: string;
+    directChatRoomId?: string;
     sendTransportId?: string;
     recvTransportId?: string;
     transports?: Set<string>;
@@ -54,6 +55,9 @@ type ScreenShareState = {
   audioProducerId?: string | null;
 };
 const screenShareByRoom = new Map<string, ScreenShareState | undefined>();
+
+/** Pending friend-chat invites: roomId → { inviterSocketId, inviterId, friendId } */
+const pendingFriendChats = new Map<string, { inviterSocketId: string; inviterId: string; friendId: string }>();
 
 function findOwnerOfDataProducer(io: IOServer, dataProducerId: string) {
   for (const [, sRaw] of io.sockets.sockets) {
@@ -173,7 +177,7 @@ export function attachSocketServer(io: IOServer) {
             });
 
             try {
-              if (!roomId.startsWith("randomchat:")) {
+              if (!roomId.startsWith("randomchat:") && !roomId.startsWith("directchat:")) {
                 await removeUserFromGroup(existing.data.user.id, roomId);
               }
               await cleanupPeer(existing as AuthedSocket, io);
@@ -239,7 +243,7 @@ export function attachSocketServer(io: IOServer) {
           });
 
           // Skip group membership for ephemeral random-chat rooms
-          if (!roomId.startsWith("randomchat:")) {
+          if (!roomId.startsWith("randomchat:") && !roomId.startsWith("directchat:")) {
             await joinGroupCore(prisma, {
               userId: socket.data.user!.id,
               groupId: roomId,
@@ -573,6 +577,119 @@ export function attachSocketServer(io: IOServer) {
         });
       }
     );
+
+    /** ---------- Direct Friend Chat ---------- */
+
+    socket.on("friendChat:invite", async ({ friendId }: { friendId: string }, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      // Verify friendship
+      const friendship = await prisma.friend.findFirst({
+        where: {
+          status: "ACCEPTED",
+          OR: [
+            { fromId: user.id, toId: friendId },
+            { fromId: friendId, toId: user.id },
+          ],
+        },
+      });
+      if (!friendship) return cb?.({ error: "not_friends" });
+
+      // Deterministic room ID
+      const roomId = `directchat:${[user.id, friendId].sort().join(":")}`;
+
+      // Find friend's socket
+      let friendSocket: AuthedSocket | undefined;
+      for (const [, sRaw] of io.sockets.sockets) {
+        const s = sRaw as AuthedSocket;
+        if (s.data.user?.id === friendId) { friendSocket = s; break; }
+      }
+      if (!friendSocket?.connected) {
+        return cb?.({ error: "friend_offline" });
+      }
+
+      // Store pending invite (overwrite if re-inviting)
+      pendingFriendChats.set(roomId, { inviterSocketId: socket.id, inviterId: user.id, friendId });
+
+      friendSocket.emit("friendChat:incoming", {
+        roomId,
+        fromId: user.id,
+        fromName: user.name || user.email || "Someone",
+      });
+      socket.emit("friendChat:calling", { roomId, friendId });
+      cb?.({ ok: true });
+    });
+
+    socket.on("friendChat:accept", async ({ roomId }: { roomId: string }, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      const invite = pendingFriendChats.get(roomId);
+      if (!invite) return cb?.({ error: "no_invite" });
+      if (invite.friendId !== user.id) return cb?.({ error: "forbidden" });
+
+      const inviterSocket = io.sockets.sockets.get(invite.inviterSocketId) as AuthedSocket | undefined;
+      const inviterName = inviterSocket?.data.user?.name || inviterSocket?.data.user?.email || "Someone";
+
+      socket.data.directChatRoomId = roomId;
+      if (inviterSocket) inviterSocket.data.directChatRoomId = roomId;
+
+      // Ready signal to both
+      inviterSocket?.emit("friendChat:ready", {
+        roomId,
+        partnerId: user.id,
+        partnerName: user.name || user.email || "Friend",
+      });
+      socket.emit("friendChat:ready", {
+        roomId,
+        partnerId: invite.inviterId,
+        partnerName: inviterName,
+      });
+
+      pendingFriendChats.delete(roomId);
+      cb?.({ ok: true });
+    });
+
+    socket.on("friendChat:decline", ({ roomId }: { roomId: string }, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      const invite = pendingFriendChats.get(roomId);
+      if (invite) {
+        if (invite.friendId !== user.id) return cb?.({ error: "forbidden" });
+        const inviterSocket = io.sockets.sockets.get(invite.inviterSocketId) as AuthedSocket | undefined;
+        inviterSocket?.emit("friendChat:declined", { roomId });
+        pendingFriendChats.delete(roomId);
+      }
+      cb?.({ ok: true });
+    });
+
+    socket.on("friendChat:leave", async (_, cb?: (res: any) => void) => {
+      const user = socket.data.user;
+      if (!user) return cb?.({ error: "unauthorized" });
+
+      const roomId = socket.data.directChatRoomId;
+      if (roomId) {
+        // Notify partner
+        const room = io.sockets.adapter.rooms.get(roomId);
+        if (room) {
+          for (const sid of room) {
+            if (sid !== socket.id) {
+              const partnerSocket = io.sockets.sockets.get(sid) as AuthedSocket | undefined;
+              if (partnerSocket) {
+                partnerSocket.emit("friendChat:partnerLeft");
+                partnerSocket.data.directChatRoomId = undefined;
+              }
+            }
+          }
+        }
+        await cleanupPeer(socket, io);
+        try { await closeRoom(roomId); } catch {}
+        socket.data.directChatRoomId = undefined;
+      }
+      cb?.({ ok: true });
+    });
 
     /** ---------- Random Chat matching flow ---------- */
 

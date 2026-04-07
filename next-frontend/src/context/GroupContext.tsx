@@ -44,7 +44,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuthContext();
 
   const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);

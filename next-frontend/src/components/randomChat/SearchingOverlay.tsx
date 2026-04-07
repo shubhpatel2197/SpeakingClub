@@ -1,6 +1,7 @@
 'use client'
 
-import { Button } from "../ui/button";
+import { useEffect, useState } from "react";
+import { X, Heart } from "lucide-react";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -13,41 +14,124 @@ type Props = {
   onCancel: () => void;
 };
 
+// Candidate avatars — pulled from the same DiceBear set used in Profile
+const AVATAR_BG = "7f9486";
+const CANDIDATES = [
+  // Girls
+  `https://api.dicebear.com/9.x/lorelei/svg?seed=Sophia&backgroundColor=${AVATAR_BG}`,
+  `https://api.dicebear.com/9.x/lorelei/svg?seed=Jasmine&backgroundColor=${AVATAR_BG}`,
+  `https://api.dicebear.com/9.x/lorelei/svg?seed=Ava&backgroundColor=${AVATAR_BG}`,
+  // Boys
+  `https://api.dicebear.com/9.x/notionists/svg?seed=Viking&backgroundColor=${AVATAR_BG}`,
+  `https://api.dicebear.com/9.x/notionists/svg?seed=Lumberjack&backgroundColor=${AVATAR_BG}`,
+  `https://api.dicebear.com/9.x/notionists/svg?seed=Captain&backgroundColor=${AVATAR_BG}`,
+];
+
 export default function SearchingOverlay({ searchTime, onCancel }: Props) {
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setActiveIdx((i) => (i + 1) % CANDIDATES.length), 700);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4">
-      {/* Pulsing rings */}
-      <div className="relative w-[80px] h-[80px] mb-6">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="absolute top-1/2 left-1/2 w-[40px] h-[40px] -mt-[20px] -ml-[20px] rounded-full border-2 border-[#7F9486]/40 animate-[pulseRing_2s_ease-out_infinite]"
-            style={{ animationDelay: `${i * 0.6}s` }}
-          />
-        ))}
-        <div className="absolute top-1/2 left-1/2 w-3.5 h-3.5 -mt-[7px] -ml-[7px] rounded-full bg-[#7F9486] shadow-[0_0_16px_rgba(127,148,134,0.5)]" />
+    <div className="relative flex h-full min-h-[560px] w-full flex-col items-center justify-center overflow-hidden px-4 py-10 sm:px-6">
+      {/* Ambient background — subtle grid + center spotlight */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: `
+            radial-gradient(circle at 50% 50%, rgba(127,148,134,0.14), transparent 55%),
+            linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)
+          `,
+          backgroundSize: "100% 100%, 48px 48px, 48px 48px",
+        }}
+      />
+
+      {/* Match stage — radar + avatar deck */}
+      <div className="relative z-10 mb-8 flex h-[280px] w-[280px] items-center justify-center sm:h-[320px] sm:w-[320px]">
+        {/* Soft center glow */}
+        <div
+          className="absolute inset-10 rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(127,148,134,0.22), rgba(217,122,92,0.10) 55%, transparent 75%)",
+            filter: "blur(6px)",
+          }}
+        />
+
+        {/* Rotating sweep — faint */}
+        <div
+          className="absolute inset-2 rounded-full animate-[spin_10s_linear_infinite]"
+          style={{
+            background:
+              "conic-gradient(from 0deg, transparent 0% 70%, rgba(127,148,134,0.35) 88%, transparent 100%)",
+            mask: "radial-gradient(circle, transparent 62%, black 63%, black 66%, transparent 67%)",
+            WebkitMask:
+              "radial-gradient(circle, transparent 62%, black 63%, black 66%, transparent 67%)",
+          }}
+        />
+
+        {/* Orbiting candidate avatars */}
+        {CANDIDATES.map((src, i) => {
+          const angle = (i / CANDIDATES.length) * Math.PI * 2;
+          const radius = 118;
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+          const active = i === activeIdx;
+          return (
+            <div
+              key={i}
+              className={`absolute transition-all duration-500 ${active ? "z-20" : "opacity-60"}`}
+              style={{ transform: `translate(${x}px, ${y}px) scale(${active ? 1.12 : 0.9})` }}
+            >
+              <div
+                className={`h-12 w-12 overflow-hidden rounded-full bg-[#1A1D24] ring-2 transition-all ${
+                  active
+                    ? "ring-[#D97A5C] shadow-[0_0_24px_rgba(217,122,92,0.6)]"
+                    : "ring-white/10"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" className="h-full w-full object-cover" />
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Center "you" bubble */}
+        <div className="relative z-10 flex h-[96px] w-[96px] items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_30%,#e8a389,#d97a5c_58%,#8a5a49)] shadow-[0_0_50px_rgba(217,122,92,0.5)] animate-[breathe_3s_ease-in-out_infinite]" />
+          <div className="absolute inset-2 rounded-full border border-white/15" />
+          <Heart className="relative h-8 w-8 fill-white text-white" />
+        </div>
       </div>
 
-      <p className="text-foreground font-semibold text-base mb-1">
-        Looking for someone...
-      </p>
-      <p className="text-muted-foreground font-mono tabular-nums text-sm mb-4">
-        {formatTime(searchTime)}
-      </p>
+      {/* Label + timer */}
+      <div className="relative z-10 mb-6 flex flex-col items-center gap-1">
+        <p className="text-base font-semibold tracking-tight text-foreground">
+          Looking for someone<span className="text-[#D97A5C]">…</span>
+        </p>
+        <p className="font-mono text-xs tabular-nums text-muted-foreground">
+          {formatTime(searchTime)}
+        </p>
+      </div>
 
-      <Button
-        variant="outline"
-        size="sm"
+      {/* Cancel */}
+      <button
         onClick={onCancel}
-        className="rounded-xl px-6"
+        className="relative z-10 inline-flex h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-[#171b22] px-5 text-sm font-semibold text-muted-foreground transition-all hover:border-[#D97A5C]/50 hover:text-foreground active:scale-95"
       >
-        Cancel
-      </Button>
+        <X className="h-4 w-4" />
+        Cancel search
+      </button>
 
       <style>{`
-        @keyframes pulseRing {
-          0% { transform: scale(0.4); opacity: 0.8; }
-          100% { transform: scale(2.8); opacity: 0; }
+        @keyframes breathe {
+          0%, 100% { transform: scale(1);    opacity: 0.95; }
+          50%      { transform: scale(1.08); opacity: 1; }
         }
       `}</style>
     </div>

@@ -159,7 +159,7 @@ export async function joinGroup(req: Request, res: Response) {
  */
 export async function leaveGroup(req: Request, res: Response) {
   const userId = req.user?.id;
-  const groupId = req.params.roomId;
+  const groupId = req.params.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   removeUserFromGroup(userId, groupId)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, UserPlus, Check } from "lucide-react";
+import { Send, UserPlus, Check, Heart, UserMinus, X, ArrowLeft, SkipForward } from "lucide-react";
 import axiosInstance from "../../api/axiosInstance";
 import MemberAvatar from "../ui/MemberAvatar";
 
@@ -18,6 +18,11 @@ type Props = {
   setTyping: (on: boolean) => void;
   participants: any[];
   selfId?: string;
+  isFriend?: boolean;
+  pendingSent?: boolean;
+  onFriendAdded?: (id: string) => void;
+  onRequestSent?: (id: string) => void;
+  onUnfriended?: (id: string) => void;
 };
 
 const MIN_HEIGHT = 44;
@@ -40,10 +45,19 @@ export default function RandomChatRoom({
   setTyping,
   participants,
   selfId,
+  isFriend,
+  pendingSent,
+  onFriendAdded,
+  onRequestSent,
+  onUnfriended,
 }: Props) {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [friendSent, setFriendSent] = useState(false);
+  const [showUnfriendConfirm, setShowUnfriendConfirm] = useState(false);
+  const [unfriending, setUnfriending] = useState(false);
+  const [skipConfirm, setSkipConfirm] = useState(false);
+  const alreadySent = friendSent || pendingSent;
   const [kbInset, setKbInset] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -56,6 +70,14 @@ export default function RandomChatRoom({
     return map;
   }, [participants]);
 
+  const avatarMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const p of participants) {
+      map[p.id || p.userId] = p.avatar || null;
+    }
+    return map;
+  }, [participants]);
+
   const displayMessages = useMemo(() => {
     return messages.map((m) => {
       const isSelf = m.from === "me" || m.from === selfId;
@@ -64,16 +86,40 @@ export default function RandomChatRoom({
     });
   }, [messages, nameMap, selfId, partnerName]);
 
+  // Keyboard shortcuts: ESC → ask to skip, ESC twice → skip
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Don't hijack ESC while typing in the composer
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (tag === "textarea" || tag === "input") return;
+      e.preventDefault();
+      setSkipConfirm((prev) => {
+        if (prev) {
+          onNext();
+          return false;
+        }
+        return true;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onNext]);
+
+  // Auto-dismiss skip confirmation after 4s of inactivity
+  useEffect(() => {
+    if (!skipConfirm) return;
+    const t = setTimeout(() => setSkipConfirm(false), 4000);
+    return () => clearTimeout(t);
+  }, [skipConfirm]);
+
   // Auto-scroll
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - (el.scrollTop + el.clientHeight) < 150;
-    if (nearBottom) {
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      });
-    }
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
   }, [displayMessages.length]);
 
   // iOS keyboard inset handling
@@ -138,31 +184,99 @@ export default function RandomChatRoom({
 
   return (
     <div className="flex flex-col h-full w-full relative overflow-hidden bg-[#1A1D24]">
+      {/* Ambient background — subtle grid + soft top spotlight */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: `
+            radial-gradient(ellipse 65% 40% at 50% 0%, rgba(217,122,92,0.12), transparent 70%),
+            linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px)
+          `,
+          backgroundSize: "100% 100%, 44px 44px, 44px 44px",
+        }}
+      />
       {/* ─── Top Bar — partner name + add friend ─── */}
-      <div className="flex items-center justify-between px-4 sm:px-5 py-2 border-b border-border bg-[#1D2128] z-10">
-        <span className="text-foreground font-semibold text-sm truncate">
-          @{partnerName || "Stranger"}
-        </span>
-        {partnerId && (
+      <div className="relative z-10 flex items-center justify-between px-4 sm:px-5 py-2 border-b border-border bg-[#1D2128]">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-foreground font-semibold text-sm truncate">
+            @{partnerName || "Stranger"}
+          </span>
+          {isFriend && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#7F9486]/15 text-[#7F9486] border border-[#7F9486]/30 text-[10px] font-semibold uppercase tracking-wide">
+              <Heart className="w-3 h-3 fill-current" /> Friend
+            </span>
+          )}
+        </div>
+        {partnerId && isFriend && (
+          showUnfriendConfirm ? (
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground mr-1">Unfriend?</span>
+              <button
+                onClick={async () => {
+                  if (unfriending) return;
+                  setUnfriending(true);
+                  try {
+                    await axiosInstance.delete(`/api/friends/by-user/${partnerId}`);
+                    onUnfriended?.(partnerId);
+                    setShowUnfriendConfirm(false);
+                  } catch {
+                    // noop
+                  } finally {
+                    setUnfriending(false);
+                  }
+                }}
+                disabled={unfriending}
+                className="w-7 h-7 rounded-lg flex items-center justify-center bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-all active:scale-95 disabled:opacity-50"
+                title="Confirm unfriend"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => !unfriending && setShowUnfriendConfirm(false)}
+                disabled={unfriending}
+                className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#1A1D24] text-muted-foreground border border-border hover:text-foreground transition-all active:scale-95 disabled:opacity-50"
+                title="Cancel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowUnfriendConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all active:scale-95 bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
+            >
+              <UserMinus className="w-3 h-3" /> Unfriend
+            </button>
+          )
+        )}
+        {partnerId && !isFriend && (
           <button
             onClick={async () => {
-              if (friendSent) return;
+              if (alreadySent) return;
               try {
-                await axiosInstance.post("/api/friends/send", { toId: partnerId });
-                setFriendSent(true);
+                const { data } = await axiosInstance.post("/api/friends/send", { toId: partnerId });
+                if (data.autoAccepted) {
+                  onFriendAdded?.(partnerId);
+                } else {
+                  setFriendSent(true);
+                  onRequestSent?.(partnerId);
+                }
               } catch {
                 setFriendSent(true);
+                onRequestSent?.(partnerId);
               }
             }}
-            disabled={friendSent}
+            disabled={alreadySent}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all active:scale-95 ${
-              friendSent
+              alreadySent
                 ? "bg-[#7F9486]/15 text-[#7F9486] border border-[#7F9486]/30 cursor-default"
                 : "bg-[#7F9486] text-white hover:bg-[#6d8275]"
             }`}
           >
-            {friendSent ? (
-              <><Check className="w-3 h-3" /> Sent</>
+            {alreadySent ? (
+              <><Check className="w-3 h-3" /> Req Sent</>
             ) : (
               <><UserPlus className="w-3 h-3" /> Add Friend</>
             )}
@@ -173,7 +287,7 @@ export default function RandomChatRoom({
       {/* ─── Messages Area ─── */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4"
+        className="relative z-10 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4"
         style={isIOSMobile() ? { marginBottom: `${kbInset}px` } : undefined}
       >
         {/* System message — "You are now chatting with..." */}
@@ -206,7 +320,7 @@ export default function RandomChatRoom({
                   <div className="shrink-0 w-8 pt-0.5">
                     {showAvatar ? (
                       <MemberAvatar
-                        member={{ id: m.from, name: m.displayName }}
+                        member={{ id: m.from, name: m.displayName, avatar: avatarMap[m.from] || null }}
                         avatarSize={32}
                         withName={false}
                       />
@@ -236,25 +350,49 @@ export default function RandomChatRoom({
 
       {/* ─── Bottom Bar — ESC / SKIP + Input ─── */}
       <div
-        className="px-3 sm:px-4 pt-2 border-t border-border bg-[#1D2128]"
+        className="relative z-10 px-3 sm:px-4 pt-2 border-t border-border bg-[#1D2128]"
         style={composerBottomStyle}
       >
         <div className="flex items-end gap-2">
-          {/* ESC button */}
+          {/* ESC → home */}
           <button
             onClick={onLeave}
-            className="shrink-0 h-[44px] px-3 rounded-lg bg-[#1A1D24] border border-border text-muted-foreground text-xs font-bold uppercase tracking-wider hover:text-foreground hover:border-[#7F9486]/50 transition-all active:scale-95"
+            title="Back to home"
+            aria-label="Back to home"
+            className="shrink-0 h-[44px] w-[44px] rounded-lg bg-[#1A1D24] border border-border text-muted-foreground hover:text-foreground hover:border-[#7F9486]/50 transition-all active:scale-95 flex items-center justify-center"
           >
-            ESC
+            <ArrowLeft className="w-[18px] h-[18px]" />
           </button>
 
-          {/* SKIP button */}
-          <button
-            onClick={onNext}
-            className="shrink-0 h-[44px] px-3.5 rounded-lg bg-[#7F9486] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#6d8275] transition-all active:scale-95"
-          >
-            SKIP
-          </button>
+          {/* SKIP — with inline confirmation */}
+          {skipConfirm ? (
+            <div className="shrink-0 inline-flex items-center gap-1.5">
+              <button
+                onClick={() => { setSkipConfirm(false); onNext(); }}
+                title="Confirm skip"
+                aria-label="Confirm skip"
+                className="h-[44px] w-[44px] rounded-lg flex items-center justify-center bg-[#D97A5C]/15 text-[#e08b70] border border-[#D97A5C]/40 hover:bg-[#D97A5C]/25 transition-all active:scale-95"
+              >
+                <Check className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={() => setSkipConfirm(false)}
+                title="Cancel"
+                aria-label="Cancel skip"
+                className="h-[44px] w-[44px] rounded-lg flex items-center justify-center bg-[#1A1D24] text-muted-foreground border border-border hover:text-foreground transition-all active:scale-95"
+              >
+                <X className="w-[18px] h-[18px]" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSkipConfirm(true)}
+              className="shrink-0 h-[44px] px-4 rounded-lg bg-[#7F9486]/15 text-[#a7bdae] border border-[#7F9486]/40 text-xs font-bold uppercase tracking-wider hover:bg-[#7F9486]/25 hover:text-white transition-all active:scale-95 flex items-center gap-1.5"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+              Skip
+            </button>
+          )}
 
           {/* Text input */}
           <textarea
@@ -292,6 +430,7 @@ export default function RandomChatRoom({
           </button>
         </div>
       </div>
+
     </div>
   );
 }

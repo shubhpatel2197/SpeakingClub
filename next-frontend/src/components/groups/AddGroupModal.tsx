@@ -13,6 +13,8 @@ import {
 import axiosInstance from "../../api/axiosInstance";
 import { useSnackbar } from "../../context/SnackbarProvider";
 import { useAuthContext } from "../../context/AuthProvider";
+import { useRouter } from "next/navigation";
+import { openLoadingTab } from "../../lib/openLoadingTab";
 
 const languages = [
   { value: "ENGLISH", label: "English" },
@@ -40,6 +42,7 @@ export default function AddGroupModal({
 }) {
   const { user } = useAuthContext();
   const { showSnackbar } = useSnackbar();
+  const router = useRouter();
   const [description, setDescription] = React.useState("Anything");
   const [language, setLanguage] = React.useState("GUJARATI");
   const [level, setLevel] = React.useState("BEGINNER");
@@ -52,6 +55,7 @@ export default function AddGroupModal({
       return;
     }
     setLoading(true);
+    const newTab = openLoadingTab("Creating room...");
     try {
       const res = await axiosInstance.post("/api/groups/create", {
         name: user?.name || "1",
@@ -64,9 +68,10 @@ export default function AddGroupModal({
       showSnackbar("Group created successfully!");
       handleClose();
 
-      const roomUrl = `/room/${res.data.group.id}`;
-      window.open(roomUrl, "_blank", "noopener,noreferrer");
+      if (newTab) newTab.location.href = `/room/${res.data.group.id}`;
+      else router.push(`/room/${res.data.group.id}`);
     } catch (err: any) {
+      if (newTab) newTab.close();
       const msg = err?.response?.data?.error || err?.response?.data?.message || "Failed to create group";
       showSnackbar(msg, { severity: "error" });
     } finally {

@@ -112,6 +112,10 @@ router.post("/signin", async (req, res) => {
 // google oauth
 router.post("/google", async (req, res) => {
   try {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ error: "Google auth is not configured on the server" });
+    }
+
     const { credential } = req.body;
     if (!credential) {
       return res.status(400).json({ error: "Google credential required" });

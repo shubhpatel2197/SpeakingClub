@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Providers from '@/context/Providers'
 import NavBar from '@/components/ui/Navbar'
+import BetterBugs from '@/components/BetterBugs'
 
 export const metadata: Metadata = {
   title: 'SpeakingClub',
@@ -23,6 +24,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <script src="https://accounts.google.com/gsi/client" async defer />
+        {/* <BetterBugs /> */}
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <Providers>

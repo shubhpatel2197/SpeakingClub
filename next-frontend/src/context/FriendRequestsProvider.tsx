@@ -15,6 +15,7 @@ type FriendRequest = {
 type FriendRequestsContextValue = {
   requests: FriendRequest[];
   count: number;
+  acceptedVersion: number;
   fetchRequests: () => Promise<void>;
   accept: (id: string) => Promise<void>;
   reject: (id: string) => Promise<void>;
@@ -28,6 +29,7 @@ export function FriendRequestsProvider({ children }: { children: React.ReactNode
   const { user } = useAuthContext();
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [count, setCount] = useState(0);
+  const [acceptedVersion, setAcceptedVersion] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchCount = useCallback(async () => {
@@ -50,6 +52,7 @@ export function FriendRequestsProvider({ children }: { children: React.ReactNode
     if (!user) {
       setCount(0);
       setRequests([]);
+      setAcceptedVersion(0);
       return;
     }
     fetchCount();
@@ -64,6 +67,7 @@ export function FriendRequestsProvider({ children }: { children: React.ReactNode
       await axiosInstance.post("/api/friends/accept", { requestId });
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
       setCount((prev) => Math.max(0, prev - 1));
+      setAcceptedVersion((prev) => prev + 1);
     } catch {}
   }, []);
 
@@ -76,7 +80,7 @@ export function FriendRequestsProvider({ children }: { children: React.ReactNode
   }, []);
 
   return (
-    <FriendRequestsContext.Provider value={{ requests, count, fetchRequests, accept, reject }}>
+    <FriendRequestsContext.Provider value={{ requests, count, acceptedVersion, fetchRequests, accept, reject }}>
       {children}
     </FriendRequestsContext.Provider>
   );

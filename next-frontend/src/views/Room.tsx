@@ -70,6 +70,7 @@ export default function Room() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const roomId = params?.id;
+  const isDirectChatRoom = typeof roomId === "string" && roomId.startsWith("directchat:");
 
   const [isMdUp, setIsMdUp] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
   useEffect(() => {
@@ -125,6 +126,10 @@ export default function Room() {
 
   const [displayMembers, setDisplayMembers] = useState<RoomParticipant[]>([]);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const otherParticipant = useMemo(
+    () => displayMembers.find((p) => p.id !== currentUserId) ?? null,
+    [displayMembers, currentUserId]
+  );
 
   const membersCount = displayMembers.length;
 
@@ -179,6 +184,11 @@ export default function Room() {
         );
         router.replace("/");
       }
+      if (e.data?.type === "leave") {
+        leaveRoom();
+        showSnackbar("You left this room from another tab.", { severity: "info" });
+        router.replace("/");
+      }
     };
 
     channel.addEventListener("message", onMessage);
@@ -226,6 +236,12 @@ export default function Room() {
         : "";
 
   const reservedRight = isMdUp && chatOpen ? `${CHAT_WIDTH}px` : "0px";
+  const roomTitle = isDirectChatRoom
+    ? `@${otherParticipant?.name || "Friend"}`
+    : ((group as any)?.description ?? "Group room");
+  const roomSubtitle = isDirectChatRoom
+    ? "Private chat with your friend"
+    : `Language: ${(group as any)?.language ?? "\u2014"} • Level: ${(group as any)?.level ?? "\u2014"} • Members: ${membersCount}`;
 
   return (
     <div className="flex flex-col h-[91vh] w-full border-2 border-border min-h-0 bg-background">
@@ -233,11 +249,10 @@ export default function Room() {
       <div className="flex items-center justify-between px-3 py-2 border-b-2 border-border bg-card gap-2">
         <div className="min-w-0">
           <h2 className="font-semibold text-base truncate max-w-[60vw] md:max-w-[40vw]">
-            {(group as any)?.description ?? "Group room"}
+            {roomTitle}
           </h2>
           <p className="text-xs text-muted-foreground hidden sm:block">
-            Language: {(group as any)?.language ?? "\u2014"} &bull; Level:{" "}
-            {(group as any)?.level ?? "\u2014"} &bull; Members: {membersCount}
+            {roomSubtitle}
           </p>
           {sharingBanner && (
             <p className="text-xs text-primary font-medium">{sharingBanner}</p>
@@ -262,19 +277,21 @@ export default function Room() {
           </button>
 
           {/* Invite */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              navigator.clipboard
-                ?.writeText(window.location.href)
-                .then(() => showSnackbar("Copied link to clipboard"))
-                .catch(() => showSnackbar("Failed to copy link to clipboard"));
-            }}
-          >
-            <LinkIcon className="w-4 h-4 mr-1" />
-            Invite
-          </Button>
+          {!isDirectChatRoom && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard
+                  ?.writeText(window.location.href)
+                  .then(() => showSnackbar("Copied link to clipboard"))
+                  .catch(() => showSnackbar("Failed to copy link to clipboard"));
+              }}
+            >
+              <LinkIcon className="w-4 h-4 mr-1" />
+              Invite
+            </Button>
+          )}
 
           {/* Screen Share */}
           <button
@@ -448,7 +465,9 @@ export default function Room() {
           <DialogHeader>
             <DialogTitle>Leave room?</DialogTitle>
             <DialogDescription>
-              {isOwner
+              {isDirectChatRoom
+                ? "This will end the private chat for both of you."
+                : isOwner
                 ? "You're the owner. Leaving may close the session for everyone."
                 : "You can rejoin anytime using the invite link."}
             </DialogDescription>

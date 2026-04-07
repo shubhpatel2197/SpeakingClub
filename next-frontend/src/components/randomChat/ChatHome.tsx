@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, Sparkles, Video, X, Plus } from "lucide-react";
-import { Button } from "../ui/button";
+import { MessageSquare, Sparkles, Video, X, Plus, Globe2, Shield, Zap } from "lucide-react";
 import { useAuthContext } from "../../context/AuthProvider";
 import axiosInstance from "../../api/axiosInstance";
 
@@ -70,25 +69,57 @@ export default function ChatHome({ onStartText }: Props) {
   const hasGender = !!user?.gender;
 
   return (
-    <div className="flex flex-col items-center h-full bg-[#1A1D24] overflow-y-auto">
+    <div className="relative flex flex-col items-center h-full bg-[#1A1D24] overflow-y-auto">
+      {/* Ambient background — subtle grid + radial spotlight */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: `
+            radial-gradient(ellipse 60% 45% at 50% 0%, rgba(217,122,92,0.16), transparent 70%),
+            linear-gradient(rgba(127,148,134,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(127,148,134,0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: "100% 100%, 42px 42px, 42px 42px",
+          backgroundPosition: "0 0, 0 0, 0 0",
+        }}
+      />
+
       {/* Top bar */}
-      <div className="w-full flex items-center px-4 sm:px-5 py-2 border-b border-border bg-[#1D2128]">
+      <div className="relative z-10 w-full flex items-center px-4 sm:px-5 py-2 border-b border-border bg-[#1D2128]/80 backdrop-blur">
         <span className="text-foreground font-semibold text-sm">New Chat</span>
       </div>
 
-      {/* Branding area */}
-      <div className="flex flex-col items-center pt-10 pb-6 px-4">
-        <div className="w-16 h-16 rounded-2xl bg-[#7F9486] flex items-center justify-center mb-4 shadow-lg shadow-[#7F9486]/15">
-          <MessageSquare className="w-8 h-8 text-white" />
+      {/* Hero / Branding */}
+      <div className="relative z-10 flex flex-col items-center pt-10 pb-5 px-4">
+        <div className="relative mb-4">
+          <div className="absolute inset-0 rounded-2xl bg-[#7F9486]/40 blur-2xl animate-[heroGlow_3s_ease-in-out_infinite]" />
+          <div className="relative w-[72px] h-[72px] rounded-2xl bg-gradient-to-br from-[#8ea393] via-[#7F9486] to-[#5f7367] flex items-center justify-center shadow-2xl shadow-[#7F9486]/30 border border-white/10">
+            <MessageSquare className="w-8 h-8 text-white" />
+          </div>
         </div>
-        <h1 className="text-foreground font-bold text-2xl tracking-tight">
+        <h1 className="text-foreground font-bold text-[26px] tracking-tight">
           Speaking<span className="text-[#7F9486]">Club</span>
         </h1>
+        <p className="text-muted-foreground text-sm mt-1">Meet someone new. Right now.</p>
+
+        {/* Feature chips */}
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1D2128]/80 border border-border text-[11px] text-muted-foreground">
+            <Globe2 className="w-3 h-3 text-[#7F9486]" /> Worldwide
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1D2128]/80 border border-border text-[11px] text-muted-foreground">
+            <Zap className="w-3 h-3 text-[#7F9486]" /> Instant match
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1D2128]/80 border border-border text-[11px] text-muted-foreground">
+            <Shield className="w-3 h-3 text-[#7F9486]" /> Anonymous
+          </span>
+        </div>
       </div>
 
       {/* Main card */}
-      <div className="w-full max-w-xl px-4 pb-8">
-        <div className="rounded-2xl border border-border bg-[#1D2128] p-5 sm:p-6 space-y-5">
+      <div className="relative z-10 w-full max-w-xl px-4 pb-8">
+        <div className="relative rounded-2xl border border-border/80 bg-gradient-to-b from-[#1F242C] to-[#1A1D24] p-5 sm:p-6 space-y-5 shadow-xl shadow-black/20 backdrop-blur">
+          <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#7F9486]/40 to-transparent" />
 
           {/* Interests section */}
           <div>
@@ -202,11 +233,9 @@ export default function ChatHome({ onStartText }: Props) {
                 )}
               </div>
 
-              {interests.length === 0 && !showInput && (
-                <p className="text-muted-foreground/50 text-xs mt-2">
-                  Select or add up to 6 interests for better matches.
-                </p>
-              )}
+              <p className="text-muted-foreground/50 text-xs mt-2">
+                Select or add up to 6 interests for better matches.
+              </p>
               {interests.length >= 6 && (
                 <p className="text-muted-foreground/40 text-[10px] mt-2">
                   Maximum 6 interests. Remove one to add another.
@@ -242,23 +271,36 @@ export default function ChatHome({ onStartText }: Props) {
 
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">
-            <button className="shrink-0 w-12 h-12 rounded-xl bg-[#7F9486]/15 border border-[#7F9486]/30 flex items-center justify-center text-[#7F9486] hover:bg-[#7F9486]/25 transition-all active:scale-95">
+            <button
+              title="Video chat"
+              className="shrink-0 w-14 h-14 rounded-xl bg-[#7F9486]/10 border border-[#7F9486]/30 flex items-center justify-center text-[#7F9486] hover:bg-[#7F9486]/20 hover:border-[#7F9486]/60 transition-all active:scale-95"
+            >
               <Video className="w-5 h-5" />
             </button>
-            <Button
+            <button
               onClick={onStartText}
-              className="flex-1 h-12 rounded-xl text-sm font-semibold gap-2"
+              className="group relative flex-1 h-14 rounded-xl text-sm font-bold uppercase tracking-[0.12em] text-white overflow-hidden transition-all active:scale-[0.98]"
             >
-              <MessageSquare className="w-4 h-4" />
-              Start Text Chat
-            </Button>
+              <span className="absolute inset-0 bg-gradient-to-b from-[#8ea393] to-[#5f7367] group-hover:from-[#7F9486] group-hover:to-[#536a5e] transition-colors" />
+              <span className="relative inline-flex items-center justify-center gap-2">
+                <MessageSquare className="w-4 h-4" />
+                Start Text Chat
+              </span>
+            </button>
           </div>
 
-          <p className="text-center text-muted-foreground/40 text-[11px]">
+          <p className="text-center text-muted-foreground/50 text-[11px]">
             Be respectful and follow our chat rules
           </p>
         </div>
       </div>
+
+      <style>{`
+        @keyframes heroGlow {
+          0%, 100% { opacity: 0.55; transform: scale(1); }
+          50%      { opacity: 0.9;  transform: scale(1.08); }
+        }
+      `}</style>
     </div>
   );
 }

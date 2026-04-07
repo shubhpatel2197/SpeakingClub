@@ -9,21 +9,10 @@ export const useCurrentGroup = () => useContext(CurrentGroupContext);
 type Props = {
   roomId: string;
   children: React.ReactNode;
-  fallback?: React.ReactNode;
 };
 
-export function CurrentGroupProvider({ roomId, children, fallback }: Props) {
-  const { groups, loading } = useGroups();
-
-  if (loading) {
-    return (
-      <>
-        {fallback ?? (
-          <div style={{ padding: 16 }}>loading room data…</div>
-        )}
-      </>
-    );
-  }
+export function CurrentGroupProvider({ roomId, children }: Props) {
+  const { groups } = useGroups();
 
   const current = useMemo(
     () => groups.find((g) => g.id === roomId) ?? null,

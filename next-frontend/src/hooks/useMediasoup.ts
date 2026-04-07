@@ -30,6 +30,10 @@ export function useMediasoup() {
 
   const socketRef = useRef<Socket | null>(null);
   const externalSocketRef = useRef<boolean>(false);
+  // Listeners registered by joinRoom on the (possibly shared) signalling socket.
+  // Tracked so cleanupAll can detach them without disconnecting a shared socket.
+  const joinRoomListenersRef = useRef<Array<{ event: string; fn: (...args: any[]) => void }>>([]);
+  const dataConsumersByProducerIdRef = useRef<Record<string, any>>({});
   const myPeerIdRef = useRef<string | null>(null);
 
   const deviceRef = useRef<Device | null>(null);
@@ -62,6 +66,18 @@ export function useMediasoup() {
   type ChatMessage = { id: string; from: string; text: string; ts: number };
 
   const dataProducerRef = useRef<DataProducer | null>(null);
+  // Silent audio producer used on Safari to force the SendTransport's
+  // DTLS/ICE handshake to complete. Without a media producer, Safari
+  // often never opens the SCTP DataChannel, so produceData() resolves
+  // but dp.send() silently drops messages.
+  const silentAudioCtxRef = useRef<AudioContext | null>(null);
+  const silentAudioTrackRef = useRef<MediaStreamTrack | null>(null);
+  const silentAudioProducerRef = useRef<Producer | null>(null);
+  // Outgoing data-channel messages queued until the DataProducer reaches
+  // readyState 'open'. Safari often has a noticeable delay before the
+  // underlying SCTP/DataChannel opens, during which dp.send() is a no-op
+  // (or throws), causing messages to be silently dropped.
+  const pendingOutgoingRef = useRef<string[]>([]);
   const dataConsumersRef = useRef<Record<string, DataConsumer>>({});
   const pendingDataProducersRef = useRef<
     Array<{ id: string; producerPeerId?: string }>
@@ -100,6 +116,46 @@ export function useMediasoup() {
     setMessages((prev) => [...prev.slice(-49), m]);
   }, []);
 
+  const parseIncomingDataPayload = useCallback(async (data: unknown) => {
+    if (typeof data === "string") {
+      return JSON.parse(data);
+    }
+    if (data instanceof Blob) {
+      return JSON.parse(await data.text());
+    }
+    if (data instanceof ArrayBuffer) {
+      return JSON.parse(new TextDecoder().decode(data));
+    }
+    if (ArrayBuffer.isView(data)) {
+      return JSON.parse(
+        new TextDecoder().decode(
+          data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+        )
+      );
+    }
+    return null;
+  }, []);
+
+  const flushPendingOutgoing = useCallback(() => {
+    const dp = dataProducerRef.current;
+    if (!dp) return;
+    const ch: any = (dp as any)._channel || (dp as any).channel || null;
+    const rs = ch?.readyState || (dp as any).readyState;
+    if (rs && rs !== "open") return;
+    const queue = pendingOutgoingRef.current;
+    while (queue.length) {
+      const payload = queue.shift()!;
+      try {
+        dp.send(payload);
+      } catch (e) {
+        // Put back and bail — will retry on next open/interval.
+        queue.unshift(payload);
+        console.warn("[CL] dp.send failed; re-queued", e);
+        return;
+      }
+    }
+  }, []);
+
   const createDataProducerIfNeeded = useCallback(async () => {
     if (!sendTransportRef.current || dataProducerRef.current) return;
     const dp = await (sendTransportRef.current as any).produceData({
@@ -108,7 +164,22 @@ export function useMediasoup() {
       protocol: "json",
     });
     dataProducerRef.current = dp;
-  }, []);
+
+    // Wire open/error listeners so queued messages are flushed once the
+    // underlying SCTP DataChannel is actually usable. On Safari this can
+    // take noticeably longer than on Chromium.
+    try {
+      (dp as any).on?.("open", () => flushPendingOutgoing());
+    } catch {}
+    const ch: any = (dp as any)._channel || (dp as any).channel || null;
+    if (ch) {
+      try {
+        ch.addEventListener?.("open", () => flushPendingOutgoing());
+      } catch {}
+    }
+    // Kick once in case it's already open by the time we wired listeners.
+    flushPendingOutgoing();
+  }, [flushPendingOutgoing]);
 
   /** Attach a track to the center "stage" <video id="screen-stage" /> */
   const attachToScreenStage = useCallback((track: MediaStreamTrack | null) => {
@@ -175,6 +246,8 @@ export function useMediasoup() {
   /** DataChannel consumer */
   const consumeDataProducer = useCallback(
     async (socket: Socket, dataProducerId: string) => {
+      // Avoid double-consuming the same data producer (prevents duplicate chat messages).
+      if (dataConsumersByProducerIdRef.current[dataProducerId]) return;
       if (!recvTransportRef.current) {
         const tpParams = await new Promise<any>((resolve, reject) => {
           socket.emit(
@@ -220,11 +293,11 @@ export function useMediasoup() {
       });
 
       dataConsumersRef.current[dataConsumer.id] = dataConsumer;
-      (dataConsumer as any).on("message", (data: any) => {
+      dataConsumersByProducerIdRef.current[params.dataProducerId] = dataConsumer;
+      (dataConsumer as any).on("message", async (data: unknown) => {
         try {
-          const m = JSON.parse(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
-          );
+          const m = await parseIncomingDataPayload(data);
+          if (!m) return;
           if (m.t === "chat")
             appendMessage({ id: m.id, from: m.from, text: m.text, ts: m.ts });
           else if (m.t === "typing" && m.from)
@@ -234,7 +307,7 @@ export function useMediasoup() {
 
       socket.emit("dataConsumerResume", { dataConsumerId: dataConsumer.id });
     },
-    [appendMessage]
+    [appendMessage, parseIncomingDataPayload]
   );
 
   /** Attach remote audio / detect screen video */
@@ -365,6 +438,18 @@ export function useMediasoup() {
 
     deviceRef.current = null;
 
+    // Detach listeners that joinRoom attached, regardless of whether
+    // we own the socket. This prevents stale handlers from firing on
+    // a shared signalling socket after a next()/leave() cycle, which
+    // caused duplicate chat messages and one-way chat issues.
+    const sock = socketRef.current;
+    if (sock) {
+      for (const { event, fn } of joinRoomListenersRef.current) {
+        try { sock.off(event, fn); } catch {}
+      }
+    }
+    joinRoomListenersRef.current = [];
+
     if (!externalSocketRef.current) {
       try {
         socketRef.current?.disconnect();
@@ -379,6 +464,15 @@ export function useMediasoup() {
     pendingDataProducersRef.current = [];
     dataProducerRef.current = null;
     dataConsumersRef.current = {};
+    dataConsumersByProducerIdRef.current = {};
+    pendingOutgoingRef.current = [];
+
+    try { (silentAudioProducerRef.current as any)?.close?.(); } catch {}
+    silentAudioProducerRef.current = null;
+    try { silentAudioTrackRef.current?.stop(); } catch {}
+    silentAudioTrackRef.current = null;
+    try { silentAudioCtxRef.current?.close(); } catch {}
+    silentAudioCtxRef.current = null;
     needConsumeScreenRef.current = false;
 
     try {
@@ -516,19 +610,7 @@ export function useMediasoup() {
       if (socketRef.current) return;
       currentRoomIdRef.current = roomId;
 
-      // Get mic permission but start muted
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        localStreamRef.current = stream;
-        const track = stream.getAudioTracks()[0];
-        if (track) track.enabled = false;
-        setMicOn(false);
-      } catch (err) {
-        showSnackbar("Microphone permission denied", { severity: "error" });
-        throw err;
-      }
+      setMicOn(false);
 
       let socket: Socket;
       if (existingSocket) {
@@ -552,13 +634,19 @@ export function useMediasoup() {
       }
       socketRef.current = socket;
 
+      // Track listeners so cleanupAll can remove them from a shared socket.
+      const on = (event: string, fn: (...args: any[]) => void) => {
+        socket.on(event, fn);
+        joinRoomListenersRef.current.push({ event, fn });
+      };
+
       myPeerIdRef.current = socket.id as string || null;
-      socket.on("connect", () => {
+      on("connect", () => {
         myPeerIdRef.current = socket.id as string;
       });
 
       // ---- Server events ----
-      socket.on(
+      on(
         "roomInfo",
         async (data: {
           peers: Array<{ peerId: string; userId?: string; name?: string; avatar?: string | null }>;
@@ -659,7 +747,7 @@ export function useMediasoup() {
         }
       );
 
-      socket.on("peerJoined", ({ peerId, userId, name, avatar }) => {
+      on("peerJoined", ({ peerId, userId, name, avatar }) => {
         peersRef.current[peerId] = {
           peerId,
           userId,
@@ -674,12 +762,12 @@ export function useMediasoup() {
         setParticipants(Object.values(peersRef.current));
       });
 
-      socket.on("peerLeft", ({ peerId }) => {
+      on("peerLeft", ({ peerId }) => {
         delete peersRef.current[peerId];
         setParticipants(Object.values(peersRef.current));
       });
 
-      socket.on(
+      on(
         "newProducer",
         async (data: {
           producerId: string;
@@ -694,6 +782,7 @@ export function useMediasoup() {
             userId: data.userId ?? prev?.userId,
             id: data.userId ?? prev?.id ?? data.producerPeerId,
             name: data.name ?? prev?.name ?? data.userId ?? data.producerPeerId,
+            avatar: prev?.avatar ?? null,
             muted: typeof data.muted === "boolean" ? data.muted : prev?.muted,
           };
           emitPresence();
@@ -715,7 +804,7 @@ export function useMediasoup() {
         }
       );
 
-      socket.on("producerMuted", ({ peerId, userId, muted }) => {
+      on("producerMuted", ({ peerId, userId, muted }) => {
         const prev = peersRef.current[peerId];
         if (prev) {
           peersRef.current[peerId] = { ...prev, muted: !!muted };
@@ -723,12 +812,12 @@ export function useMediasoup() {
         }
       });
 
-      socket.on("producerClosed", ({ producerId }) => {
+      on("producerClosed", ({ producerId }) => {
         cleanupPeerConsumer(producerId);
       });
 
       // ---- Screen-share signaling ----
-      socket.on(
+      on(
         "screenShare:state",
         ({
           sharerUserId,
@@ -746,7 +835,7 @@ export function useMediasoup() {
         }
       );
 
-      socket.on(
+      on(
         "screenShare:started",
         async ({
           sharerUserId,
@@ -779,7 +868,7 @@ export function useMediasoup() {
         }
       );
 
-      socket.on(
+      on(
         "screenShare:stopped",
         ({ sharerUserId }: { sharerUserId: string }) => {
           if (sharerUserId !== user?.id) {
@@ -788,6 +877,57 @@ export function useMediasoup() {
             attachToScreenStage(null);
             screenVideoProducerIdRef.current = null;
           }
+        }
+      );
+
+      on("friendChat:partnerLeft", () => {
+        showSnackbar("Your friend left the chat.", { severity: "info" });
+        cleanupAll();
+        window.removeEventListener("beforeunload", cleanupAll);
+        router.replace("/");
+      });
+
+      on(
+        "newDataProducer",
+        async ({
+          dataProducerId,
+          producerPeerId,
+        }: {
+          dataProducerId: string;
+          producerPeerId: string;
+        }) => {
+          if (producerPeerId === myPeerIdRef.current) return;
+
+          if (!deviceRef.current || !recvTransportRef.current) {
+            pendingDataProducersRef.current.push({
+              id: dataProducerId,
+              producerPeerId,
+            });
+            return;
+          }
+
+          try {
+            await consumeDataProducer(socket, dataProducerId);
+          } catch (e) {
+            console.error("[CL] consumeDataProducer failed", e);
+          }
+        }
+      );
+
+      on(
+        "dataProducerClosed",
+        ({ dataProducerId }: { dataProducerId: string }) => {
+          const dcEntry = Object.entries(dataConsumersRef.current).find(
+            ([, dc]) => (dc as any).dataProducerId === dataProducerId
+          );
+          if (dcEntry) {
+            const [id, dc] = dcEntry;
+            try {
+              (dc as any).close?.();
+            } catch {}
+            delete dataConsumersRef.current[id];
+          }
+          delete dataConsumersByProducerIdRef.current[dataProducerId];
         }
       );
 
@@ -847,6 +987,39 @@ export function useMediasoup() {
           }
         );
 
+        // Force DTLS/ICE on the send transport by producing a silent
+        // audio track synthesized via WebAudio (no mic permission
+        // required). This is the only reliable way to get Safari to
+        // actually open the SCTP DataChannel created by produceData().
+        const primeSendTransport = async () => {
+          if (silentAudioProducerRef.current) return;
+          try {
+            const Ctx: any =
+              (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (!Ctx) return;
+            const ctx: AudioContext = new Ctx();
+            silentAudioCtxRef.current = ctx;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0; // silent
+            const dest = (ctx as any).createMediaStreamDestination();
+            osc.connect(gain).connect(dest);
+            osc.start();
+            const track = (dest.stream as MediaStream).getAudioTracks()[0];
+            if (!track) return;
+            silentAudioTrackRef.current = track;
+            const producer = await (sendTransport as any).produce({
+              track,
+              appData: { silent: true },
+              disableTrackOnPause: false,
+              stopTracks: false,
+            });
+            silentAudioProducerRef.current = producer;
+          } catch (e) {
+            console.warn("[CL] primeSendTransport failed", e);
+          }
+        };
+
         (sendTransport as any).on(
           "producedata",
           (params: any, callback: any, errback: any) => {
@@ -866,50 +1039,10 @@ export function useMediasoup() {
           }
         );
 
+        // Prime DTLS/ICE before creating the data producer so the
+        // underlying SCTP association is ready to open immediately.
+        await primeSendTransport();
         await createDataProducerIfNeeded();
-
-        socket.on(
-          "newDataProducer",
-          async ({
-            dataProducerId,
-            producerPeerId,
-          }: {
-            dataProducerId: string;
-            producerPeerId: string;
-          }) => {
-            if (producerPeerId === myPeerIdRef.current) return;
-
-            if (!deviceRef.current || !recvTransportRef.current) {
-              pendingDataProducersRef.current.push({
-                id: dataProducerId,
-                producerPeerId,
-              });
-              return;
-            }
-
-            try {
-              await consumeDataProducer(socket, dataProducerId);
-            } catch (e) {
-              console.error("[CL] consumeDataProducer failed", e);
-            }
-          }
-        );
-
-        socket.on(
-          "dataProducerClosed",
-          ({ dataProducerId }: { dataProducerId: string }) => {
-            const dcEntry = Object.entries(dataConsumersRef.current).find(
-              ([, dc]) => (dc as any).dataProducerId === dataProducerId
-            );
-            if (dcEntry) {
-              const [id, dc] = dcEntry;
-              try {
-                (dc as any).close?.();
-              } catch {}
-              delete dataConsumersRef.current[id];
-            }
-          }
-        );
 
         const onReplaced = () => {
           showSnackbar(
@@ -918,7 +1051,7 @@ export function useMediasoup() {
           );
           router.replace("/");
         };
-        socket.on("session:replaced", onReplaced);
+        on("session:replaced", onReplaced);
 
         // RECV transport
         if (!recvTransportRef.current) {
@@ -996,19 +1129,37 @@ export function useMediasoup() {
         text: text.slice(0, 16000),
         ts: now,
       };
+      const payload = JSON.stringify(msg);
+      const ch: any = (dp as any)._channel || (dp as any).channel || null;
+      if (
+        ch &&
+        typeof ch.bufferedAmount === "number" &&
+        ch.bufferedAmount > 1_000_000
+      ) {
+        return;
+      }
+      const rs: string | undefined = ch?.readyState || (dp as any).readyState;
+      // Optimistically show our own message immediately.
+      appendMessage({ id: msg.id, from: "me", text: msg.text, ts: msg.ts });
+
+      if (rs && rs !== "open") {
+        // Queue; will flush when the data channel opens. Safari often
+        // takes a few hundred ms after produceData before readyState is
+        // actually 'open', and dp.send() in that window silently drops.
+        pendingOutgoingRef.current.push(payload);
+        // Belt-and-braces: also retry shortly in case no 'open' event fires.
+        setTimeout(() => flushPendingOutgoing(), 200);
+        return;
+      }
       try {
-        const ch: any = (dp as any)._channel || (dp as any).channel || null;
-        if (
-          ch &&
-          typeof ch.bufferedAmount === "number" &&
-          ch.bufferedAmount > 1_000_000
-        )
-          return;
-        dp.send(JSON.stringify(msg));
-        appendMessage({ id: msg.id, from: "me", text: msg.text, ts: msg.ts });
-      } catch {}
+        dp.send(payload);
+      } catch (e) {
+        console.warn("[CL] dp.send threw; queueing", e);
+        pendingOutgoingRef.current.push(payload);
+        setTimeout(() => flushPendingOutgoing(), 200);
+      }
     },
-    [appendMessage]
+    [appendMessage, flushPendingOutgoing, user?.id]
   );
 
   const setTyping = useCallback((on: boolean) => {
@@ -1269,6 +1420,12 @@ export function useMediasoup() {
 
   /** Clean up media and disconnect socket, but do NOT navigate */
   const cleanupAndDisconnect = useCallback(() => {
+    const currentRoomId = currentRoomIdRef.current;
+    if (currentRoomId.startsWith("directchat:")) {
+      try {
+        socketRef.current?.emit("friendChat:leave");
+      } catch {}
+    }
     try {
       socketRef.current?.emit("leaveRoom");
     } catch {}
@@ -1285,6 +1442,21 @@ export function useMediasoup() {
 
   /** Mic toggle (producer pause/resume) */
   const toggleMic = useCallback(async () => {
+    // Lazily request mic permission on first use
+    if (!localStreamRef.current) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        localStreamRef.current = stream;
+        const track = stream.getAudioTracks()[0];
+        if (track) track.enabled = false;
+      } catch (err) {
+        showSnackbar("Microphone permission denied", { severity: "error" });
+        return;
+      }
+    }
+
     const stream = localStreamRef.current;
     if (!stream) return;
     const track = stream.getAudioTracks()[0];

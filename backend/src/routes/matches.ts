@@ -59,4 +59,23 @@ router.post("/", async (req, res) => {
   }
 });
 
+// DELETE /matches/:id — remove a match from history
+router.delete("/:id", async (req, res) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const match = await prisma.matchHistory.findUnique({ where: { id: req.params.id } });
+    if (!match || (match.user1Id !== userId && match.user2Id !== userId)) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    await prisma.matchHistory.delete({ where: { id: req.params.id } });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
