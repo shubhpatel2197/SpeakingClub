@@ -49,9 +49,19 @@ type Props = {
   matchVersion?: number;
   friendsVersion?: number;
   onFriendAccepted?: () => void;
+  mobile?: boolean;
+  onClose?: () => void;
 };
 
-export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0, friendsVersion = 0, onFriendAccepted }: Props) {
+export default function ChatSidebar({
+  onNewChat,
+  friendReqs,
+  matchVersion = 0,
+  friendsVersion = 0,
+  onFriendAccepted,
+  mobile = false,
+  onClose,
+}: Props) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [friends, setFriends] = useState<FriendEntry[]>([]);
@@ -220,19 +230,37 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0, f
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#1A1D24] border-r border-border">
+    <div className={`flex h-full w-full flex-col bg-[#1A1D24] ${mobile ? "" : "border-r border-border"}`}>
       {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b border-border">
         <div className="flex items-center justify-between">
-          <h2 className="text-foreground font-semibold text-base">Chats</h2>
-          <Button
-            size="sm"
-            onClick={onNewChat}
-            className="h-8 rounded-xl px-3 text-xs font-medium"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            New Chat
-          </Button>
+          <div>
+            <h2 className="text-foreground font-semibold text-base">Chats</h2>
+            {mobile && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Friends, requests, and recent matches
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={onNewChat}
+              className="h-8 rounded-xl px-3 text-xs font-medium"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              New Chat
+            </Button>
+            {mobile && (
+              <button
+                onClick={onClose}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-[#1D2128] text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Close chat drawer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -356,7 +384,7 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0, f
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1 opacity-0 group-hover/friend:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover/friend:opacity-100">
                     <button
                       onClick={() => handleStartFriendChat(f)}
                       disabled={callingFriendId === f.friendId}
@@ -414,12 +442,12 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0, f
                       {m.name || "Stranger"}
                     </p>
                   </div>
-                  <span className="text-[10px] text-muted-foreground/50 shrink-0 group-hover/match:hidden">
+                  <span className="text-[10px] text-muted-foreground/50 shrink-0 md:group-hover/match:hidden">
                     {timeAgo(m.chatAt)}
                   </span>
                   <button
                     onClick={() => handleRemoveMatch(m.id)}
-                    className="hidden group-hover/match:flex w-7 h-7 rounded-lg bg-transparent border border-transparent hover:border-red-400/30 text-muted-foreground/50 hover:text-red-400 items-center justify-center transition-all active:scale-90 shrink-0"
+                    className="flex w-7 h-7 rounded-lg bg-transparent border border-transparent hover:border-red-400/30 text-muted-foreground/50 hover:text-red-400 items-center justify-center transition-all active:scale-90 shrink-0 md:hidden md:group-hover/match:flex"
                     title="Remove match"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -432,7 +460,10 @@ export default function ChatSidebar({ onNewChat, friendReqs, matchVersion = 0, f
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2.5 border-t border-border">
+      <div
+        className="px-4 py-2.5 border-t border-border"
+        style={mobile ? { paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" } : undefined}
+      >
         <p className="text-[10px] text-muted-foreground/40 text-center">
           Be respectful and follow our chat rules
         </p>

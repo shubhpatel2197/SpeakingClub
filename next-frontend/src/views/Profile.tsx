@@ -80,12 +80,12 @@ export default function ProfileView() {
   const currentAvatar = selectedAvatar || user?.avatar
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pt-8 pb-16 sm:px-6">
+    <div className="mx-auto max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
       <h1 className="text-2xl font-display font-semibold text-primary mb-8">Profile</h1>
 
       <div className="bg-card border border-border rounded-2xl p-6 sm:p-8">
         {/* Current avatar + name */}
-        <div className="flex items-center gap-5 mb-8">
+        <div className="mb-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
           <div className="relative shrink-0">
             {currentAvatar ? (
               <img
@@ -104,12 +104,12 @@ export default function ProfileView() {
 
           <div className="min-w-0 flex-1">
             {editingName ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Your name"
-                  className="max-w-[240px]"
+                  className="w-full sm:max-w-[240px]"
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') setEditingName(false)
@@ -121,7 +121,7 @@ export default function ProfileView() {
                 />
                 <button
                   onClick={() => setEditingName(false)}
-                  className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+                  className="self-start rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
                 >
                   <Check className="w-4 h-4" />
                 </button>
@@ -148,7 +148,7 @@ export default function ProfileView() {
           <Label className="text-sm font-medium text-foreground mb-3 block">
             Choose an avatar
           </Label>
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
             {DEFAULT_AVATARS.map((url) => {
               const isSelected = selectedAvatar === url
               return (
@@ -207,8 +207,8 @@ export default function ProfileView() {
         </div>
 
         {/* Save */}
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={!hasChanges || saving}>
+        <div className="flex justify-stretch sm:justify-end">
+          <Button onClick={handleSave} disabled={!hasChanges || saving} className="w-full sm:w-auto">
             {saving ? 'Saving...' : 'Save changes'}
           </Button>
         </div>

@@ -9,9 +9,10 @@ import ChatSidebar from "../components/randomChat/ChatSidebar";
 import ChatHome from "../components/randomChat/ChatHome";
 import SearchingOverlay from "../components/randomChat/SearchingOverlay";
 import RandomChatRoom from "../components/randomChat/RandomChatRoom";
-import { UserPlus, Check, Play, ArrowLeft, X } from "lucide-react";
+import { UserPlus, Check, Play, ArrowLeft, X, PanelLeft } from "lucide-react";
 import MemberAvatar from "../components/ui/MemberAvatar";
 import { useFriendRequests } from "../hooks/useFriendRequests";
+import { useMediaQuery } from "../hooks/use-media-query";
 
 export default function RandomChat() {
   const { user, refreshUser } = useAuthContext();
@@ -36,8 +37,10 @@ export default function RandomChat() {
     }
   }, [rc.state, rc.roomId]);
   const friendReqs = useFriendRequests();
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   const [pendingSentIds, setPendingSentIds] = useState<Set<string>>(new Set());
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const refreshFriendIds = () => {
     axiosInstance.get("/api/friends").then(({ data }) => {
@@ -57,6 +60,16 @@ export default function RandomChat() {
       refreshFriendIds();
     }
   }, [friendReqs.acceptedVersion]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isDesktop]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [rc.state]);
 
   // Only show agree modal if user has neither gender nor agreedToTerms
   const needsAgreement = user ? (!user.gender || !user.agreedToTerms) : false;
@@ -151,6 +164,7 @@ export default function RandomChat() {
   };
 
   const handleNewChat = () => {
+    setMobileSidebarOpen(false);
     if (rc.state === "matched") {
       handleSkip();
     } else {
@@ -276,6 +290,7 @@ export default function RandomChat() {
             <EndedChatSection
               partnerName={endedChat.partnerName}
               partnerId={endedChat.partnerId}
+              partnerAvatar={endedChat.partnerAvatar}
               messages={endedChat.messages}
               reason={endedChat.reason}
               selfId={user?.id}
@@ -295,16 +310,76 @@ export default function RandomChat() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] overflow-hidden">
+    <div className="relative flex h-[calc(100dvh-4rem)] overflow-hidden bg-[#1A1D24]">
       <AgreeModal open={showAgree} onAgree={handleAgree} />
 
-      <div className="shrink-0 w-[260px] hidden md:block overflow-hidden">
-        <ChatSidebar onNewChat={handleNewChat} friendReqs={friendReqs} matchVersion={matchVersion} friendsVersion={friendsVersion} onFriendAccepted={refreshFriendIds} />
+      <div className="shrink-0 hidden w-[260px] overflow-hidden md:block">
+        <ChatSidebar
+          onNewChat={handleNewChat}
+          friendReqs={friendReqs}
+          matchVersion={matchVersion}
+          friendsVersion={friendsVersion}
+          onFriendAccepted={refreshFriendIds}
+        />
       </div>
 
       <div className="flex-1 min-w-0 relative">
         {renderContent()}
       </div>
+
+      {!isDesktop && (
+        <>
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className={`absolute right-4 z-30 inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#1D2128]/95 px-4 py-3 text-sm font-semibold text-foreground shadow-xl shadow-black/30 backdrop-blur transition-all active:scale-95 ${
+              rc.state === "matched" ? "top-4" : "bottom-4"
+            }`}
+            style={{
+              top: rc.state === "matched" ? "calc(1rem + env(safe-area-inset-top, 0px))" : undefined,
+              bottom:
+                rc.state === "matched"
+                  ? undefined
+                  : "calc(1rem + env(safe-area-inset-bottom, 0px))",
+            }}
+            aria-label="Open chats drawer"
+          >
+            <PanelLeft className="h-4 w-4 text-[#7F9486]" />
+            Chats
+            {friendReqs.count > 0 && (
+              <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-[#7F9486] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {friendReqs.count}
+              </span>
+            )}
+          </button>
+
+          {mobileSidebarOpen && (
+            <div className="absolute inset-0 z-40 md:hidden">
+              <button
+                onClick={() => setMobileSidebarOpen(false)}
+                className="absolute inset-0 bg-black/55"
+                aria-label="Close chats drawer backdrop"
+              />
+              <div
+                className="absolute inset-x-0 bottom-0 top-14 overflow-hidden rounded-t-[28px] border border-white/10 bg-[#1A1D24] shadow-2xl shadow-black/40"
+                style={{
+                  paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                }}
+              >
+                <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/10" />
+                <ChatSidebar
+                  onNewChat={handleNewChat}
+                  friendReqs={friendReqs}
+                  matchVersion={matchVersion}
+                  friendsVersion={friendsVersion}
+                  onFriendAccepted={refreshFriendIds}
+                  mobile
+                  onClose={() => setMobileSidebarOpen(false)}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

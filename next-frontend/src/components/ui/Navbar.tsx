@@ -391,6 +391,13 @@ export default function NavBar() {
         </div>
       )}
 
+      <NotificationPopup
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        triggerRef={bellRef}
+        mobile
+      />
+
       <Dialog open={confirmSignOutOpen} onOpenChange={(open) => !signingOut && setConfirmSignOutOpen(open)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

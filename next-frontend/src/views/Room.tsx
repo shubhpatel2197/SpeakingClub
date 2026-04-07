@@ -244,22 +244,22 @@ export default function Room() {
     : `Language: ${(group as any)?.language ?? "\u2014"} • Level: ${(group as any)?.level ?? "\u2014"} • Members: ${membersCount}`;
 
   return (
-    <div className="flex flex-col h-[91vh] w-full border-2 border-border min-h-0 bg-background">
+    <div className="flex min-h-[calc(100dvh-4rem)] w-full min-w-0 flex-col bg-background md:border-2 md:border-border">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b-2 border-border bg-card gap-2">
-        <div className="min-w-0">
-          <h2 className="font-semibold text-base truncate max-w-[60vw] md:max-w-[40vw]">
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border bg-card px-3 py-2 sm:px-4">
+        <div className="min-w-0 flex-1">
+          <h2 className="max-w-[75vw] truncate text-base font-semibold md:max-w-[40vw]">
             {roomTitle}
           </h2>
-          <p className="text-xs text-muted-foreground hidden sm:block">
+          <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
             {roomSubtitle}
           </p>
           {sharingBanner && (
-            <p className="text-xs text-primary font-medium">{sharingBanner}</p>
+            <p className="mt-0.5 text-xs font-medium text-primary">{sharingBanner}</p>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto sm:flex-nowrap">
           {/* Chat toggle */}
           <button
             onClick={() => {
@@ -267,7 +267,7 @@ export default function Room() {
               setChatOpen(next);
               if (next) setUnread(0);
             }}
-            className="relative p-2 rounded-lg hover:bg-white/5 text-primary transition-colors"
+            className="relative rounded-lg p-2 text-primary transition-colors hover:bg-white/5"
             title={chatOpen ? "Hide chat" : "Show chat"}
           >
             <MessageCircle className="w-5 h-5" />
@@ -281,6 +281,7 @@ export default function Room() {
             <Button
               variant="outline"
               size="sm"
+              className="h-9"
               onClick={() => {
                 navigator.clipboard
                   ?.writeText(window.location.href)
@@ -288,7 +289,7 @@ export default function Room() {
                   .catch(() => showSnackbar("Failed to copy link to clipboard"));
               }}
             >
-              <LinkIcon className="w-4 h-4 mr-1" />
+              <LinkIcon className="mr-1 h-4 w-4" />
               Invite
             </Button>
           )}
@@ -301,7 +302,7 @@ export default function Room() {
               !!screenSharerId &&
               screenSharerId !== currentUserId
             }
-            className={`p-2 rounded-lg transition-colors ${isSharingScreen
+            className={`rounded-lg p-2 transition-colors ${isSharingScreen
                 ? "text-destructive hover:bg-destructive/10"
                 : "text-primary hover:bg-white/5"
               } disabled:opacity-40 disabled:cursor-not-allowed`}
@@ -325,9 +326,9 @@ export default function Room() {
             variant="outline"
             size="sm"
             onClick={handleLeaveClick}
-            className="text-destructive border-destructive/30 hover:bg-destructive/10"
+            className="h-9 border-destructive/30 text-destructive hover:bg-destructive/10"
           >
-            <LogOut className="w-4 h-4 mr-1" />
+            <LogOut className="mr-1 h-4 w-4" />
             Leave
           </Button>
         </div>
@@ -347,8 +348,11 @@ export default function Room() {
 
         {/* Bottom Bar: Members */}
         <div
-          className="flex items-center gap-2.5 p-2 border-t-2 border-border bg-card"
-          style={{ paddingRight: reservedRight }}
+          className="flex items-center gap-2.5 border-t border-border bg-card p-2"
+          style={{
+            paddingRight: reservedRight,
+            paddingBottom: isMdUp ? undefined : "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
+          }}
         >
           {/* Quick screen share */}
           <div className="flex items-center gap-1.5 mr-2">
@@ -372,11 +376,11 @@ export default function Room() {
               )}
             </button>
 
-            <div className="w-px h-6 bg-border hidden sm:block" />
+            <div className="hidden h-6 w-px bg-border sm:block" />
           </div>
 
           {/* Members scroll */}
-          <div className="flex gap-2 overflow-x-auto items-center flex-1 px-1">
+          <div className="flex flex-1 items-center gap-2 overflow-x-auto px-1">
             {displayMembers.map((p) => {
               const isCurrent = p.id === currentUserId;
               const displayName = p.name ?? p.id;
@@ -388,10 +392,10 @@ export default function Room() {
               const gradient = deterministicGradient(displayName);
 
               return (
-                <div key={p.id} className="flex flex-col items-center min-w-[72px] gap-1 py-1">
+                <div key={p.id} className="flex min-w-[64px] flex-col items-center gap-1 py-1 sm:min-w-[72px]">
                   <Avatar
                     className="ring-2 ring-primary/20"
-                    style={{ width: 48, height: 48 }}
+                    style={{ width: isMdUp ? 48 : 42, height: isMdUp ? 48 : 42 }}
                   >
                     {p.avatar && (
                       <AvatarImage src={p.avatar} alt={displayName} />
@@ -403,7 +407,7 @@ export default function Room() {
                     </AvatarFallback>
                   </Avatar>
                   <span
-                    className="text-[11px] text-center max-w-[70px] truncate"
+                    className="max-w-[64px] truncate text-center text-[11px] sm:max-w-[70px]"
                     title={displayName}
                   >
                     {displayName}

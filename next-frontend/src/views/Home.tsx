@@ -96,7 +96,8 @@ export default function Home() {
       {/* Mobile FAB */}
       <button
         onClick={handleOpen}
-        className="sm:hidden fixed right-4 bottom-6 z-40 w-14 h-14 rounded-full bg-primary hover:bg-[#E08B70] text-white shadow-lg flex items-center justify-center transition-colors"
+        className="fixed bottom-6 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg transition-colors hover:bg-[#E08B70] sm:hidden"
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
         aria-label="add group"
       >
         <Plus className="w-6 h-6" />

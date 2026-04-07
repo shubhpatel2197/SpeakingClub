@@ -69,7 +69,10 @@ export default function ChatHome({ onStartText }: Props) {
   const hasGender = !!user?.gender;
 
   return (
-    <div className="relative flex flex-col items-center h-full bg-[#1A1D24] overflow-y-auto">
+    <div
+      className="relative flex h-full flex-col items-center overflow-y-auto bg-[#1A1D24]"
+      style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+    >
       {/* Ambient background — subtle grid + radial spotlight */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -85,22 +88,24 @@ export default function ChatHome({ onStartText }: Props) {
       />
 
       {/* Top bar */}
-      <div className="relative z-10 w-full flex items-center px-4 sm:px-5 py-2 border-b border-border bg-[#1D2128]/80 backdrop-blur">
+      <div className="sticky top-0 relative z-20 flex w-full items-center border-b border-border bg-[#1D2128]/80 px-4 py-2 backdrop-blur sm:px-5">
         <span className="text-foreground font-semibold text-sm">New Chat</span>
       </div>
 
       {/* Hero / Branding */}
-      <div className="relative z-10 flex flex-col items-center pt-10 pb-5 px-4">
+      <div className="relative z-10 flex flex-col items-center px-4 pb-5 pt-7 sm:pt-10">
         <div className="relative mb-4">
           <div className="absolute inset-0 rounded-2xl bg-[#7F9486]/40 blur-2xl animate-[heroGlow_3s_ease-in-out_infinite]" />
-          <div className="relative w-[72px] h-[72px] rounded-2xl bg-gradient-to-br from-[#8ea393] via-[#7F9486] to-[#5f7367] flex items-center justify-center shadow-2xl shadow-[#7F9486]/30 border border-white/10">
-            <MessageSquare className="w-8 h-8 text-white" />
+          <div className="relative flex h-[64px] w-[64px] items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-[#8ea393] via-[#7F9486] to-[#5f7367] shadow-2xl shadow-[#7F9486]/30 sm:h-[72px] sm:w-[72px]">
+            <MessageSquare className="h-7 w-7 text-white sm:h-8 sm:w-8" />
           </div>
         </div>
-        <h1 className="text-foreground font-bold text-[26px] tracking-tight">
+        <h1 className="text-[24px] font-bold tracking-tight text-foreground sm:text-[26px]">
           Speaking<span className="text-[#7F9486]">Club</span>
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">Meet someone new. Right now.</p>
+        <p className="mt-1 text-center text-sm text-muted-foreground">
+          Meet someone new. Right now.
+        </p>
 
         {/* Feature chips */}
         <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
@@ -118,7 +123,7 @@ export default function ChatHome({ onStartText }: Props) {
 
       {/* Main card */}
       <div className="relative z-10 w-full max-w-xl px-4 pb-8">
-        <div className="relative rounded-2xl border border-border/80 bg-gradient-to-b from-[#1F242C] to-[#1A1D24] p-5 sm:p-6 space-y-5 shadow-xl shadow-black/20 backdrop-blur">
+        <div className="relative space-y-5 rounded-2xl border border-border/80 bg-gradient-to-b from-[#1F242C] to-[#1A1D24] p-4 shadow-xl shadow-black/20 backdrop-blur sm:p-6">
           <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#7F9486]/40 to-transparent" />
 
           {/* Interests section */}
@@ -248,12 +253,12 @@ export default function ChatHome({ onStartText }: Props) {
           {!hasGender && (
             <div>
               <p className="text-foreground font-semibold text-sm mb-3">Gender Filter:</p>
-              <div className="flex gap-2 justify-center">
+              <div className="grid grid-cols-3 gap-2">
                 {(["MALE", "BOTH", "FEMALE"] as GenderFilter[]).map((g) => (
                   <button
                     key={g}
                     onClick={() => setGenderFilter(g)}
-                    className={`flex flex-col items-center gap-1.5 px-5 py-3 rounded-xl border text-xs font-medium transition-all ${
+                    className={`flex min-w-0 flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-xs font-medium transition-all sm:px-5 ${
                       genderFilter === g
                         ? "border-[#7F9486] bg-[#7F9486]/10 text-[#7F9486]"
                         : "border-border bg-[#1A1D24] text-muted-foreground hover:border-[#7F9486]/40 hover:text-foreground"
@@ -273,13 +278,13 @@ export default function ChatHome({ onStartText }: Props) {
           <div className="flex gap-3 pt-1">
             <button
               title="Video chat"
-              className="shrink-0 w-14 h-14 rounded-xl bg-[#7F9486]/10 border border-[#7F9486]/30 flex items-center justify-center text-[#7F9486] hover:bg-[#7F9486]/20 hover:border-[#7F9486]/60 transition-all active:scale-95"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#7F9486]/30 bg-[#7F9486]/10 text-[#7F9486] transition-all active:scale-95 hover:border-[#7F9486]/60 hover:bg-[#7F9486]/20 sm:h-14 sm:w-14"
             >
-              <Video className="w-5 h-5" />
+              <Video className="h-5 w-5" />
             </button>
             <button
               onClick={onStartText}
-              className="group relative flex-1 h-14 rounded-xl text-sm font-bold uppercase tracking-[0.12em] text-white overflow-hidden transition-all active:scale-[0.98]"
+              className="group relative h-12 flex-1 overflow-hidden rounded-xl text-sm font-bold uppercase tracking-[0.12em] text-white transition-all active:scale-[0.98] sm:h-14"
             >
               <span className="absolute inset-0 bg-gradient-to-b from-[#8ea393] to-[#5f7367] group-hover:from-[#7F9486] group-hover:to-[#536a5e] transition-colors" />
               <span className="relative inline-flex items-center justify-center gap-2">

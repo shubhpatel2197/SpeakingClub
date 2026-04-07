@@ -8,10 +8,12 @@ export default function NotificationPopup({
   open,
   onClose,
   triggerRef,
+  mobile = false,
 }: {
   open: boolean
   onClose: () => void
   triggerRef?: React.RefObject<HTMLElement | null>
+  mobile?: boolean
 }) {
   const { requests, count, fetchRequests, accept, reject } = useFriendRequests()
   const ref = useRef<HTMLDivElement>(null)
@@ -40,7 +42,11 @@ export default function NotificationPopup({
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-white/[0.08] bg-[#181B22] shadow-2xl z-[100] overflow-hidden"
+      className={
+        mobile
+          ? "fixed inset-x-3 top-[4.5rem] z-[100] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#181B22] shadow-2xl sm:hidden"
+          : "absolute right-0 top-full z-[100] mt-2 w-80 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#181B22] shadow-2xl"
+      }
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
         <span className="text-sm font-semibold text-foreground">Notifications</span>
