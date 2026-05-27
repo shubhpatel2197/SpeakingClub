@@ -153,7 +153,7 @@ export default function GroupCard({
   const size = avatarSize(totalSlots);
 
   return (
-    <div className="relative bg-card border border-border rounded-2xl p-5 transition-all duration-200 hover:border-primary/20 group/card">
+    <div className="relative flex h-full flex-col bg-card border border-border rounded-2xl p-5 transition-all duration-200 hover:border-primary/20 group/card">
       {isOwner && (
         <button
           onClick={() => setDeleteOpen(true)}
@@ -186,7 +186,10 @@ export default function GroupCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-4" style={{ justifyItems: "center" }}>
+      <div
+        className="mb-4 grid h-[136px] grid-cols-3 content-start gap-2"
+        style={{ justifyItems: "center" }}
+      >
         {visibleMembers.map((m) => (
           <MemberAvatar
             key={m.id}
@@ -208,7 +211,7 @@ export default function GroupCard({
       </div>
 
       {!hideJoin && (
-        <div className="flex justify-end">
+        <div className="mt-auto flex justify-end">
           {isAlreadyMember ? (
             <Button
               onClick={handleLeave}

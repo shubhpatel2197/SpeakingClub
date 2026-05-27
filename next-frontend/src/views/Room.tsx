@@ -32,6 +32,7 @@ const CHAT_WIDTH = 340;
 
 type RoomParticipant = {
   id: string;
+  userId?: string;
   name?: string | null;
   avatar?: string | null;
   muted?: boolean;
@@ -81,6 +82,8 @@ export default function Room() {
   }, []);
 
   const { user } = useAuthContext();
+  const group = useCurrentGroup();
+
   const {
     joinRoom,
     leaveRoom,
@@ -94,8 +97,8 @@ export default function Room() {
     isSharingScreen,
     screenSharerId,
     screenSharerName,
+    speakingByParticipantId,
   } = useMediasoup();
-  const group = useCurrentGroup();
 
   const [chatOpen, setChatOpen] = useState<boolean>(false);
   useEffect(() => {
@@ -145,45 +148,40 @@ export default function Room() {
       const prev = map.get(p.id);
       map.set(p.id, {
         id: p.id,
+        userId: p.userId,
         name: p.name ?? prev?.name ?? p.id,
         avatar: p.avatar ?? prev?.avatar ?? null,
         muted: typeof p.muted === "boolean" ? p.muted : prev?.muted,
       });
     });
     if (user?.id && !map.has(user.id)) {
-      map.set(user.id, { id: user.id, name: user.name ?? user.email ?? "You", avatar: user.avatar ?? null });
+      map.set(user.id, {
+        id: user.id,
+        userId: user.id,
+        name: user.name ?? user.email ?? "You",
+        avatar: user.avatar ?? null,
+      });
     }
     setDisplayMembers(Array.from(map.values()));
   }, [rtcParticipants, user?.id, user?.name, user?.email, user?.avatar]);
 
-  // Detect duplicate tabs for the same room via BroadcastChannel
-  const [duplicateTab, setDuplicateTab] = useState(false);
-
   useEffect(() => {
     if (!roomId) return;
+    let channel: BroadcastChannel | null = null;
+
+    joinRoom(roomId).catch((err) => {
+      console.error("[Room] joinRoom failed", err);
+      showSnackbar("Failed to join room", { severity: "error" });
+      router.replace("/");
+    });
+
     if (typeof BroadcastChannel === "undefined") {
-      joinRoom(roomId);
       return;
     }
 
-    const channel = new BroadcastChannel(`room:${roomId}`);
-    let isOriginal = true;
-
-    channel.postMessage({ type: "ping" });
+    channel = new BroadcastChannel(`room:${roomId}`);
 
     const onMessage = (e: MessageEvent) => {
-      if (e.data?.type === "ping" && isOriginal) {
-        channel.postMessage({ type: "pong" });
-      }
-      if (e.data?.type === "pong") {
-        isOriginal = false;
-        setDuplicateTab(true);
-        showSnackbar(
-          "This room is already open in another tab.",
-          { severity: "error" }
-        );
-        router.replace("/");
-      }
       if (e.data?.type === "leave") {
         leaveRoom();
         showSnackbar("You left this room from another tab.", { severity: "info" });
@@ -193,16 +191,11 @@ export default function Room() {
 
     channel.addEventListener("message", onMessage);
 
-    const timeout = setTimeout(() => {
-      if (isOriginal) joinRoom(roomId);
-    }, 300);
-
     return () => {
-      clearTimeout(timeout);
-      channel.removeEventListener("message", onMessage);
-      channel.close();
+      channel?.removeEventListener("message", onMessage);
+      channel?.close();
     };
-  }, [roomId]);
+  }, [roomId, joinRoom, leaveRoom, router, showSnackbar]);
 
   const handleLeaveClick = async () => setConfirmLeaveOpen(true);
   const confirmLeave = async () => {
@@ -215,7 +208,11 @@ export default function Room() {
   const nameMapRef = useRef<Record<string, string>>({});
   const nameMap = useMemo(() => {
     const newMap = { ...nameMapRef.current };
-    for (const m of displayMembers) newMap[m.id] = m.name || m.id;
+    for (const m of displayMembers) {
+      const label = m.name || m.id;
+      newMap[m.id] = label;
+      if (m.userId) newMap[m.userId] = label;
+    }
     nameMapRef.current = newMap;
     return newMap;
   }, [displayMembers]);
@@ -223,7 +220,10 @@ export default function Room() {
   const avatarMap = useMemo(() => {
     const map: Record<string, string> = {};
     for (const m of displayMembers) {
-      if (m.avatar) map[m.id] = m.avatar;
+      if (m.avatar) {
+        map[m.id] = m.avatar;
+        if (m.userId) map[m.userId] = m.avatar;
+      }
     }
     return map;
   }, [displayMembers]);
@@ -390,22 +390,35 @@ export default function Room() {
                   ? true
                   : !p.muted;
               const gradient = deterministicGradient(displayName);
+              const isSpeaking = !!speakingByParticipantId[p.id];
 
               return (
                 <div key={p.id} className="flex min-w-[64px] flex-col items-center gap-1 py-1 sm:min-w-[72px]">
-                  <Avatar
-                    className="ring-2 ring-primary/20"
-                    style={{ width: isMdUp ? 48 : 42, height: isMdUp ? 48 : 42 }}
-                  >
-                    {p.avatar && (
-                      <AvatarImage src={p.avatar} alt={displayName} />
-                    )}
-                    <AvatarFallback
-                      className={`bg-gradient-to-br text-white font-semibold text-xs ${gradient}`}
+                  <div className="relative">
+                    <Avatar
+                      className={`ring-2 transition-all duration-200 ${
+                        isSpeaking
+                          ? "ring-green-400 shadow-[0_0_12px_rgba(74,222,128,0.5)]"
+                          : "ring-primary/20"
+                      }`}
+                      style={{ width: isMdUp ? 48 : 42, height: isMdUp ? 48 : 42 }}
                     >
-                      {avatarInitials(displayName)}
-                    </AvatarFallback>
-                  </Avatar>
+                      {p.avatar && (
+                        <AvatarImage src={p.avatar} alt={displayName} />
+                      )}
+                      <AvatarFallback
+                        className={`bg-gradient-to-br text-white font-semibold text-xs ${gradient}`}
+                      >
+                        {avatarInitials(displayName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    {isSpeaking && (
+                      <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500" />
+                      </span>
+                    )}
+                  </div>
                   <span
                     className="max-w-[64px] truncate text-center text-[11px] sm:max-w-[70px]"
                     title={displayName}

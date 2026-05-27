@@ -355,6 +355,11 @@ export function getRoom(roomId: string) {
   return rooms.get(roomId);
 }
 
+/** Expose ICE/TURN config so P2P rooms can use the same servers */
+export function getIceServers(): RtcIceServer[] {
+  return parseTurnServersFromEnv();
+}
+
 export async function closeRoom(roomId: string) {
   const r = rooms.get(roomId);
   if (!r) return;

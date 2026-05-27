@@ -1,4 +1,4 @@
-import type { Betterbugs } from 'http://localhost:9000/index.js';
+import type { Betterbugs } from '@betterbugs/web-sdk';
 
 declare global {
   interface Window {

@@ -24,6 +24,18 @@ export async function removeUserFromGroup(userId: string, groupId: string) {
     return { ok: true };
   }
 
+  if (membership.groupId !== groupId) {
+    console.log(
+      "Membership group mismatch for user",
+      userId,
+      "expected",
+      groupId,
+      "found",
+      membership.groupId
+    );
+    return { ok: true };
+  }
+
   console.log(
     "Removing membership",
     membership.id,

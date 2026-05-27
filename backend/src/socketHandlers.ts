@@ -7,6 +7,7 @@ import {
   getRoom,
   closeRoom,
   transportToRoom,
+  getIceServers,
 } from "./mediasoup/roomManager";
 import { removeUserFromGroup, joinGroupCore } from "./services/groupService";
 import prisma from "./lib/prisma";
@@ -83,6 +84,22 @@ function findSocketInRoomByUser(
   return null;
 }
 
+function hasAnotherSocketInRoomByUser(
+  io: IOServer,
+  roomId: string,
+  userId: string,
+  excludeSocketId: string
+): boolean {
+  const room = io.sockets.adapter.rooms.get(roomId);
+  if (!room) return false;
+  for (const sid of room) {
+    if (sid === excludeSocketId) continue;
+    const s = io.sockets.sockets.get(sid) as AuthedSocket | undefined;
+    if (s?.data.user?.id === userId) return true;
+  }
+  return false;
+}
+
 function getUserFromHandshake(socket: Socket): AuthedUser | null {
   const raw = socket.handshake?.headers?.cookie || "";
   const cookies = parseCookie(raw || "");
@@ -155,15 +172,30 @@ export function attachSocketServer(io: IOServer) {
       "joinRoom",
       async ({ roomId }: { roomId: string }, cb?: (res: any) => void) => {
         try {
-          const room = await getOrCreateRoom(roomId);
+          // Determine rtcMode: P2P for small rooms, SFU for larger ones
+          let rtcMode: "p2p" | "sfu" = "p2p";
+          if (!roomId.startsWith("randomchat:") && !roomId.startsWith("directchat:")) {
+            try {
+              const group = await prisma.group.findUnique({
+                where: { id: roomId },
+                select: { max_members: true },
+              });
+              if (group && group.max_members != null && group.max_members >= 5) {
+                rtcMode = "sfu";
+              }
+            } catch {}
+          }
+
+          // Only create mediasoup room for SFU mode
+          const room = rtcMode === "sfu" ? await getOrCreateRoom(roomId) : null;
           socket.data.roomId = roomId;
 
           // Check for duplicate BEFORE joining the room so we don't find ourselves
-          const existing = findSocketInRoomByUser(
-            io,
-            roomId,
-            socket.data.user.id
-          );
+          const enforceSingleSession =
+            roomId.startsWith("randomchat:") || roomId.startsWith("directchat:");
+          const existing = enforceSingleSession
+            ? findSocketInRoomByUser(io, roomId, socket.data.user.id)
+            : null;
 
           await socket.join(roomId);
 
@@ -199,39 +231,50 @@ export function attachSocketServer(io: IOServer) {
               };
             });
 
-          const producers = Array.from(room.producers.values()).map((p) => {
-            const owner = findOwnerOfProducer(io, p.id);
+          if (rtcMode === "sfu" && room) {
+            // SFU mode: send mediasoup producers & data producers
+            const producers = Array.from(room.producers.values()).map((p) => {
+              const owner = findOwnerOfProducer(io, p.id);
             return {
               id: p.id,
+              kind: p.kind,
               producerPeerId: owner?.socketId,
               userId: owner?.user?.id,
               name: owner?.user?.name ?? owner?.user?.email ?? owner?.socketId,
               muted: !!p.paused,
             };
-          });
+            });
 
-          const dataProducers = Array.from(
-            (room as any).dataProducers?.values?.() || []
-          ).map((dp: any) => {
-            const owner = findOwnerOfDataProducer(io, dp.id);
-            return { id: dp.id, producerPeerId: owner?.socketId };
-          });
+            const dataProducers = Array.from(
+              (room as any).dataProducers?.values?.() || []
+            ).map((dp: any) => {
+              const owner = findOwnerOfDataProducer(io, dp.id);
+              return { id: dp.id, producerPeerId: owner?.socketId };
+            });
 
-          /** NEW: include current screen-share state */
-          const ss = screenShareByRoom.get(roomId);
-          socket.emit("roomInfo", {
-            peers,
-            producers,
-            dataProducers,
-            screenShare: ss
-              ? {
-                  sharerUserId: ss.userId,
-                  name: ss.name || null,
-                  videoProducerId: ss.videoProducerId || null,
-                  audioProducerId: ss.audioProducerId || null,
-                }
-              : undefined,
-          });
+            const ss = screenShareByRoom.get(roomId);
+            socket.emit("roomInfo", {
+              rtcMode: "sfu",
+              peers,
+              producers,
+              dataProducers,
+              screenShare: ss
+                ? {
+                    sharerUserId: ss.userId,
+                    name: ss.name || null,
+                    videoProducerId: ss.videoProducerId || null,
+                    audioProducerId: ss.audioProducerId || null,
+                  }
+                : undefined,
+            });
+          } else {
+            // P2P mode: send ICE servers and peer list (no mediasoup resources)
+            socket.emit("roomInfo", {
+              rtcMode: "p2p",
+              peers,
+              iceServers: getIceServers(),
+            });
+          }
 
           const u = socket.data.user || {};
           socket.to(roomId).emit("peerJoined", {
@@ -255,7 +298,7 @@ export function attachSocketServer(io: IOServer) {
           }
 
           cb?.({ ok: true });
-          console.log("[SRV] joinRoom ok", { roomId, sid: socket.id });
+          console.log("[SRV] joinRoom ok", { roomId, sid: socket.id, rtcMode });
         } catch (e: any) {
           console.error("[SRV] joinRoom error", e);
           cb?.({ error: String(e?.message || e) });
@@ -364,6 +407,7 @@ export function attachSocketServer(io: IOServer) {
           const u = socket.data.user || {};
           socket.to(roomId).emit("newProducer", {
             producerId: producer.id,
+            kind,
             producerPeerId: socket.id,
             userId: (u as AuthedUser).id,
             name:
@@ -842,6 +886,34 @@ export function attachSocketServer(io: IOServer) {
       console.log("[RANDOM] leave", user.id);
     });
 
+    /** ---------- P2P signaling relay ---------- */
+
+    socket.on("p2p:signal", ({ to, data }: { to: string; data: any }) => {
+      io.to(to).emit("p2p:signal", { from: socket.id, data });
+    });
+
+    socket.on("p2p:muted", ({ muted }: { muted: boolean }) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      socket.to(roomId).emit("p2p:muted", {
+        peerId: socket.id,
+        userId: socket.data.user?.id,
+        muted,
+      });
+    });
+
+    socket.on("p2p:chat", ({ message }: { message: any }) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      socket.to(roomId).emit("p2p:chat", { message });
+    });
+
+    socket.on("p2p:typing", ({ payload }: { payload: any }) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      socket.to(roomId).emit("p2p:typing", { payload });
+    });
+
     /** Leave & cleanup */
     socket.on("leaveRoom", async () => {
       await cleanupPeer(socket, io);
@@ -883,48 +955,50 @@ export function attachSocketServer(io: IOServer) {
     console.log("[SRV] cleanupPeer", socket.id);
     const roomId = socket.data.roomId;
     if (!roomId) return;
-    const room = getRoom(roomId);
-    if (!room) return;
 
     socket.to(roomId).emit("peerLeft", { peerId: socket.id });
 
-    /** If leaving user was the screen sharer, stop it */
-    const ss = screenShareByRoom.get(roomId);
-    if (ss && ss.userId === socket.data.user?.id) {
-      screenShareByRoom.delete(roomId);
-      io.to(roomId).emit("screenShare:stopped", { sharerUserId: ss.userId });
-      io.to(roomId).emit("screenShare:state", {
-        sharerUserId: null,
-        name: null,
-      });
-    }
+    // mediasoup cleanup (only if SFU room exists)
+    const room = getRoom(roomId);
+    if (room) {
+      /** If leaving user was the screen sharer, stop it */
+      const ss = screenShareByRoom.get(roomId);
+      if (ss && ss.userId === socket.data.user?.id) {
+        screenShareByRoom.delete(roomId);
+        io.to(roomId).emit("screenShare:stopped", { sharerUserId: ss.userId });
+        io.to(roomId).emit("screenShare:state", {
+          sharerUserId: null,
+          name: null,
+        });
+      }
 
-    if (socket.data.producers) {
-      for (const pid of socket.data.producers) {
-        try {
-          await room.closeProducer(pid);
-        } catch {}
-        socket.to(roomId).emit("producerClosed", { producerId: pid });
+      if (socket.data.producers) {
+        for (const pid of socket.data.producers) {
+          try {
+            await room.closeProducer(pid);
+          } catch {}
+          socket.to(roomId).emit("producerClosed", { producerId: pid });
+        }
+        socket.data.producers.clear();
       }
-      socket.data.producers.clear();
-    }
-    if (socket.data.transports) {
-      for (const tid of socket.data.transports) {
-        try {
-          await room.destroyTransport(tid);
-        } catch {}
+      if (socket.data.transports) {
+        for (const tid of socket.data.transports) {
+          try {
+            await room.destroyTransport(tid);
+          } catch {}
+        }
+        socket.data.transports.clear();
       }
-      socket.data.transports.clear();
-    }
 
-    if (socket.data.dataProducers) {
-      for (const dpid of socket.data.dataProducers) {
-        try {
-          await (room as any).closeDataProducer(dpid);
-        } catch {}
-        socket.to(roomId).emit("dataProducerClosed", { dataProducerId: dpid });
+      if (socket.data.dataProducers) {
+        for (const dpid of socket.data.dataProducers) {
+          try {
+            await (room as any).closeDataProducer(dpid);
+          } catch {}
+          socket.to(roomId).emit("dataProducerClosed", { dataProducerId: dpid });
+        }
+        socket.data.dataProducers.clear();
       }
-      socket.data.dataProducers.clear();
     }
 
     try {
@@ -933,7 +1007,12 @@ export function attachSocketServer(io: IOServer) {
 
     // Skip group membership cleanup for ephemeral random-chat rooms
     const userId = socket.data.user?.id;
-    if (userId && !roomId.startsWith("randomchat:")) {
+    const isEphemeralRoom =
+      roomId.startsWith("randomchat:") || roomId.startsWith("directchat:");
+    const hasSiblingSession = userId
+      ? hasAnotherSocketInRoomByUser(io, roomId, userId, socket.id)
+      : false;
+    if (userId && !isEphemeralRoom && !hasSiblingSession) {
       await removeUserFromGroup(userId, roomId).catch((e) => {
         console.error("Error removing user from group on disconnect:", e);
       });

@@ -7,6 +7,7 @@ import { AuthProvider } from './AuthProvider'
 import { GroupsProvider } from './GroupContext'
 import { FriendRequestsProvider } from './FriendRequestsProvider'
 import { TooltipProvider } from '@/components/ui/tooltip-ui'
+import BetterbugsBoot from '@/components/BetterbugsBoot'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -16,6 +17,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <AuthProvider>
             <FriendRequestsProvider>
               <GroupsProvider>
+                <BetterbugsBoot />
                 {children}
               </GroupsProvider>
             </FriendRequestsProvider>

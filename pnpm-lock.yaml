@@ -136,6 +136,9 @@ importers:
 
   next-frontend:
     dependencies:
+      '@betterbugs/web-sdk':
+        specifier: link:/Users/shubh/bb-web-sdk/build
+        version: link:../../bb-web-sdk/build
       '@radix-ui/react-avatar':
         specifier: ^1.1.10
         version: 1.1.11(@types/react-dom@19.2.1(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)

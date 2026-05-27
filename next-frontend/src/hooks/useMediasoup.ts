@@ -8,6 +8,7 @@ import { useSnackbar } from "../context/SnackbarProvider";
 import { useRouter } from "next/navigation";
 import { useAuthContext } from "../context/AuthProvider";
 import { getAuthToken } from "../lib/authToken";
+import { useP2PAudio } from "./useP2PAudio";
 
 type SendTransport = ReturnType<Device["createSendTransport"]>;
 type RecvTransport = ReturnType<Device["createRecvTransport"]>;
@@ -60,6 +61,33 @@ export function useMediasoup() {
   const [micOn, setMicOn] = useState(false);
   const [producing, setProducing] = useState(false);
   const peersRef = useRef<Record<string, Participant>>({});
+  const producerOwnerRef = useRef<Record<string, string>>({});
+  const isCleaningUpRef = useRef(false);
+
+  // P2P audio mode
+  const {
+    speakingByPeerId,
+    initP2P,
+    addPeer,
+    removePeer,
+    teardownAllP2P,
+    replaceLocalStream,
+    handleSignal,
+  } = useP2PAudio();
+  const audioModeRef = useRef<"p2p" | "sfu">("p2p");
+  const iceServersRef = useRef<Array<{ urls: string | string[]; username?: string; credential?: string }>>([]);
+
+  // Speaking detection
+  const [speakingByParticipantId, setSpeakingByParticipantId] = useState<Record<string, boolean>>({});
+  const remoteAudioMeterRef = useRef<
+    Record<string, { ctx: AudioContext; source: MediaStreamAudioSourceNode; analyser: AnalyserNode; rafId: number }>
+  >({});
+  const localAudioMeterRef = useRef<{
+    ctx: AudioContext;
+    source: MediaStreamAudioSourceNode;
+    analyser: AnalyserNode;
+    rafId: number;
+  } | null>(null);
 
   type DataProducer = any;
   type DataConsumer = any;
@@ -111,6 +139,112 @@ export function useMediasoup() {
     const list = Object.values(peersRef.current);
     setParticipants(list);
   }
+
+  /* ── Speaking detection helpers ─────────────────────────────── */
+
+  const setSpeaking = useCallback((participantId: string | undefined, speaking: boolean) => {
+    if (!participantId) return;
+    setSpeakingByParticipantId((prev) => {
+      if (prev[participantId] === speaking) return prev;
+      return { ...prev, [participantId]: speaking };
+    });
+  }, []);
+
+  const clearSpeaking = useCallback((participantId: string | undefined) => {
+    if (!participantId) return;
+    setSpeakingByParticipantId((prev) => {
+      if (!(participantId in prev)) return prev;
+      const next = { ...prev };
+      delete next[participantId];
+      return next;
+    });
+  }, []);
+
+  const stopRemoteAudioMeter = useCallback((producerId: string) => {
+    const meter = remoteAudioMeterRef.current[producerId];
+    if (!meter) return;
+    cancelAnimationFrame(meter.rafId);
+    try { meter.source.disconnect(); } catch {}
+    try { meter.analyser.disconnect(); } catch {}
+    try { meter.ctx.close(); } catch {}
+    delete remoteAudioMeterRef.current[producerId];
+  }, []);
+
+  const stopLocalAudioMeter = useCallback(() => {
+    const meter = localAudioMeterRef.current;
+    if (!meter) return;
+    cancelAnimationFrame(meter.rafId);
+    try { meter.source.disconnect(); } catch {}
+    try { meter.analyser.disconnect(); } catch {}
+    try { meter.ctx.close(); } catch {}
+    localAudioMeterRef.current = null;
+  }, []);
+
+  const createAudioMeter = useCallback((
+    participantId: string,
+    track: MediaStreamTrack,
+    onFrame: (nextRaf: number) => void
+  ) => {
+    const Ctx: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return null;
+    const ctx: AudioContext = new Ctx();
+    const stream = new MediaStream([track]);
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.82;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sumSq = 0;
+      for (let i = 0; i < data.length; i++) {
+        const n = (data[i] - 128) / 128;
+        sumSq += n * n;
+      }
+      setSpeaking(participantId, track.enabled && Math.sqrt(sumSq / data.length) > 0.035);
+      onFrame(requestAnimationFrame(tick));
+    };
+    return { ctx, source, analyser, rafId: requestAnimationFrame(tick) };
+  }, [setSpeaking]);
+
+  const monitorRemoteTrackVolume = useCallback((producerId: string, participantId: string, track: MediaStreamTrack) => {
+    stopRemoteAudioMeter(producerId);
+    const meter = createAudioMeter(participantId, track, (nextRaf) => {
+      if (!remoteAudioMeterRef.current[producerId]) return;
+      remoteAudioMeterRef.current[producerId].rafId = nextRaf;
+    });
+    if (meter) remoteAudioMeterRef.current[producerId] = meter;
+  }, [createAudioMeter, stopRemoteAudioMeter]);
+
+  const monitorLocalTrackVolume = useCallback((participantId: string, track: MediaStreamTrack) => {
+    stopLocalAudioMeter();
+    const meter = createAudioMeter(participantId, track, (nextRaf) => {
+      if (!localAudioMeterRef.current) return;
+      localAudioMeterRef.current.rafId = nextRaf;
+    });
+    if (meter) localAudioMeterRef.current = meter;
+  }, [createAudioMeter, stopLocalAudioMeter]);
+
+  /** Sync P2P speaking map → unified speakingByParticipantId */
+  useEffect(() => {
+    if (audioModeRef.current !== "p2p") return;
+    setSpeakingByParticipantId((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const participant of Object.values(peersRef.current)) {
+        const peerId = participant.peerId;
+        if (!peerId) continue;
+        const participantId = participant.id || participant.userId || peerId;
+        const speaking = !!speakingByPeerId[peerId];
+        if (next[participantId] !== speaking) {
+          next[participantId] = speaking;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [speakingByPeerId]);
 
   const appendMessage = useCallback((m: ChatMessage) => {
     setMessages((prev) => [...prev.slice(-49), m]);
@@ -342,6 +476,11 @@ export function useMediasoup() {
         }
         // @ts-ignore
         audio.srcObject = ms;
+        // Monitor volume for speaking indicator (SFU mode)
+        const participantId = producerOwnerRef.current[key];
+        if (participantId) {
+          monitorRemoteTrackVolume(key, participantId, consumer.track);
+        }
 
         audio.play().catch(() => {
           const btn = document.createElement("button");
@@ -367,7 +506,7 @@ export function useMediasoup() {
         console.error("[CL/ATTACH] error", err);
       }
     },
-    [attachToScreenStage]
+    [attachToScreenStage, monitorRemoteTrackVolume]
   );
 
   /** Cleanup a single producer's consumers/elements */
@@ -389,20 +528,27 @@ export function useMediasoup() {
         } catch {}
         delete audioElsRef.current[producerId];
       }
+      stopRemoteAudioMeter(producerId);
+      clearSpeaking(producerOwnerRef.current[producerId]);
+      delete producerOwnerRef.current[producerId];
       if (screenVideoProducerIdRef.current === producerId) {
         attachToScreenStage(null);
         screenVideoProducerIdRef.current = null;
       }
     },
-    [attachToScreenStage]
+    [attachToScreenStage, clearSpeaking, stopRemoteAudioMeter]
   );
 
   /** Full cleanup */
   const cleanupAll = useCallback(() => {
+    if (isCleaningUpRef.current) return;
+    isCleaningUpRef.current = true;
+
     try {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {}
     localStreamRef.current = null;
+    stopLocalAudioMeter();
 
     Object.values(producersRef.current).forEach((p) => {
       try {
@@ -425,6 +571,10 @@ export function useMediasoup() {
       } catch {}
     });
     audioElsRef.current = {};
+    Object.keys(remoteAudioMeterRef.current).forEach((producerId) => {
+      stopRemoteAudioMeter(producerId);
+    });
+    producerOwnerRef.current = {};
 
     try {
       sendTransportRef.current?.close();
@@ -494,15 +644,21 @@ export function useMediasoup() {
     setScreenSharerName(null);
     screenVideoProducerIdRef.current = null;
 
+    // P2P teardown
+    teardownAllP2P();
+    audioModeRef.current = "p2p";
+
     setParticipants([]);
     setMicOn(false);
     setProducing(false);
     setMessages([]);
-  }, [attachToScreenStage]);
+    setSpeakingByParticipantId({});
+  }, [attachToScreenStage, stopLocalAudioMeter, stopRemoteAudioMeter, teardownAllP2P]);
 
   /** Consume a remote producer (creates recv transport if missing) */
   const consumeProducer = useCallback(
     async (socket: Socket, producerId: string) => {
+      if (isCleaningUpRef.current) return;
       if (!recvTransportRef.current) {
         const tpParams = await new Promise<any>((resolve, reject) => {
           socket.emit(
@@ -593,13 +749,21 @@ export function useMediasoup() {
     const list = pendingProducersRef.current.splice(0);
     if (!list.length) return;
 
+    const requeue: typeof list = [];
     for (const p of list) {
       if (p.producerPeerId && p.producerPeerId === myPeerIdRef.current)
         continue;
+      // In P2P mode, skip audio producers (audio flows via P2P)
+      if (audioModeRef.current === "p2p" && (p as any).kind === "audio") {
+        requeue.push(p);
+        continue;
+      }
       try {
         await consumeProducer(socket, p.id);
       } catch {}
     }
+    // Keep audio producers buffered for potential SFU transition
+    if (requeue.length) pendingProducersRef.current.push(...requeue);
   }, [consumeProducer]);
 
   /** Join room and wire all events.
@@ -608,9 +772,25 @@ export function useMediasoup() {
   const joinRoom = useCallback(
     async (roomId: string, existingSocket?: Socket) => {
       if (socketRef.current) return;
+      isCleaningUpRef.current = false;
       currentRoomIdRef.current = roomId;
+      let resolveInitialRoomInfo: (() => void) | null = null;
+      const initialRoomInfoPromise = new Promise<void>((resolve) => {
+        resolveInitialRoomInfo = resolve;
+      });
 
-      setMicOn(false);
+      const shouldAutoEnableMic = /^randomchat[:\-_]/i.test(roomId);
+      setMicOn(shouldAutoEnableMic);
+
+      if (shouldAutoEnableMic) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          localStreamRef.current = stream;
+        } catch {
+          setMicOn(false);
+          showSnackbar("Microphone permission denied", { severity: "error" });
+        }
+      }
 
       let socket: Socket;
       if (existingSocket) {
@@ -649,6 +829,8 @@ export function useMediasoup() {
       on(
         "roomInfo",
         async (data: {
+          rtcMode?: "p2p" | "sfu";
+          iceServers?: Array<{ urls: string | string[]; username?: string; credential?: string }>;
           peers: Array<{ peerId: string; userId?: string; name?: string; avatar?: string | null }>;
           producers?: Array<{
             id: string;
@@ -666,12 +848,20 @@ export function useMediasoup() {
             audioProducerId?: string | null;
           };
         }) => {
+          // Set RTC mode from server
+          if (data.rtcMode) {
+            audioModeRef.current = data.rtcMode;
+          }
+          if (data.iceServers) {
+            iceServersRef.current = data.iceServers;
+          }
+
           const next: Record<string, Participant> = {};
           for (const p of data.peers || []) {
             next[p.peerId] = {
               peerId: p.peerId,
               userId: p.userId,
-              id: p.userId || p.peerId,
+              id: p.peerId,
               name: p.name || p.userId || p.peerId,
               avatar: p.avatar || null,
               muted: true,
@@ -689,7 +879,7 @@ export function useMediasoup() {
                 peersRef.current[prod.producerPeerId] = {
                   peerId: prod.producerPeerId,
                   userId: prod.userId,
-                  id: prod.userId || prod.producerPeerId,
+                  id: prod.producerPeerId,
                   name: prod.name || prod.userId || prod.producerPeerId,
                   muted: prod.muted,
                 };
@@ -702,6 +892,8 @@ export function useMediasoup() {
                   muted: prod.muted,
                 };
               }
+              producerOwnerRef.current[prod.id] =
+                prod.producerPeerId || prod.userId || prod.id;
               pendingProducersRef.current.push(prod);
             }
           }
@@ -718,6 +910,9 @@ export function useMediasoup() {
           if (Array.isArray(data.recentChat) && data.recentChat.length) {
             setMessages(data.recentChat.slice(-50));
           }
+
+          resolveInitialRoomInfo?.();
+          resolveInitialRoomInfo = null;
 
           if (data.screenShare?.sharerUserId) {
             setScreenSharerId(data.screenShare.sharerUserId || null);
@@ -751,7 +946,7 @@ export function useMediasoup() {
         peersRef.current[peerId] = {
           peerId,
           userId,
-          id: userId || peerId,
+          id: peerId,
           name: name || userId || peerId,
           avatar: avatar || null,
           muted:
@@ -760,11 +955,29 @@ export function useMediasoup() {
               : (peersRef.current[peerId]?.muted ?? true),
         };
         setParticipants(Object.values(peersRef.current));
+
+        // In P2P mode, establish a direct connection with the new peer
+        if (audioModeRef.current === "p2p" && myPeerIdRef.current) {
+          addPeer(socket, myPeerIdRef.current, peerId, localStreamRef.current);
+          const localTrack = localStreamRef.current?.getAudioTracks?.()[0];
+          socket.emit("p2p:muted", { muted: localTrack ? !localTrack.enabled : true });
+        }
       });
 
       on("peerLeft", ({ peerId }) => {
+        const participantId =
+          peersRef.current[peerId]?.id || peersRef.current[peerId]?.userId || peerId;
+        clearSpeaking(participantId);
         delete peersRef.current[peerId];
         setParticipants(Object.values(peersRef.current));
+        removePeer(peerId);
+      });
+
+      on("p2p:muted", ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+        const prev = peersRef.current[peerId];
+        if (!prev) return;
+        peersRef.current[peerId] = { ...prev, muted: !!muted };
+        emitPresence();
       });
 
       on(
@@ -772,6 +985,7 @@ export function useMediasoup() {
         async (data: {
           producerId: string;
           producerPeerId: string;
+          kind?: string;
           userId?: string;
           name?: string;
           muted?: boolean;
@@ -780,7 +994,7 @@ export function useMediasoup() {
           peersRef.current[data.producerPeerId] = {
             peerId: data.producerPeerId,
             userId: data.userId ?? prev?.userId,
-            id: data.userId ?? prev?.id ?? data.producerPeerId,
+            id: prev?.id ?? data.producerPeerId,
             name: data.name ?? prev?.name ?? data.userId ?? data.producerPeerId,
             avatar: prev?.avatar ?? null,
             muted: typeof data.muted === "boolean" ? data.muted : prev?.muted,
@@ -790,13 +1004,22 @@ export function useMediasoup() {
           const payload = {
             id: data.producerId,
             producerPeerId: data.producerPeerId,
+            kind: data.kind,
             userId: data.userId,
             name: data.name,
             muted: data.muted,
           };
+          producerOwnerRef.current[data.producerId] =
+            data.producerPeerId ?? data.userId ?? peersRef.current[data.producerPeerId]?.id;
           if (!deviceRef.current) {
             pendingProducersRef.current.push(payload);
           } else if (data.producerPeerId !== myPeerIdRef.current) {
+            // In P2P mode, skip consuming AUDIO via SFU (it flows directly P2P).
+            // Always consume video (screen share) via SFU.
+            if (audioModeRef.current === "p2p" && data.kind === "audio") {
+              pendingProducersRef.current.push(payload);
+              return;
+            }
             try {
               await consumeProducer(socket, data.producerId);
             } catch {}
@@ -931,10 +1154,64 @@ export function useMediasoup() {
         }
       );
 
-      // ---- Join, then set up device/transports ----
-      await new Promise<void>((resolve) => {
-        socket.emit("joinRoom", { roomId }, () => resolve());
+      /* ── P2P signalling relay ─────────────────────────────────── */
+      on("p2p:signal", ({ from, data }: { from: string; data: any }) => {
+        handleSignal(from, data);
       });
+
+      on("p2p:chat", ({ message }: { message: ChatMessage }) => {
+        if (!message?.id) return;
+        appendMessage(message);
+      });
+
+      on("p2p:typing", ({ payload }: { payload: { from?: string; on?: boolean } }) => {
+        if (!payload?.from) return;
+        typingRef.current[payload.from] = !!payload.on;
+      });
+
+      // ---- Join, then set up device/transports ----
+      await new Promise<void>((resolve, reject) => {
+        socket.emit("joinRoom", { roomId }, (res: any) => {
+          if (res?.error) {
+            reject(new Error(String(res.error)));
+            return;
+          }
+          resolve();
+        });
+      });
+      await initialRoomInfoPromise;
+
+      // For P2P-only rooms, skip mediasoup Device/transport setup entirely
+      if (audioModeRef.current === "p2p") {
+        console.log("[CL] P2P mode — skipping mediasoup setup");
+        const onReplaced = () => {
+          showSnackbar("This room is open in another tab. Closing this session.", { severity: "info" });
+          router.replace("/");
+        };
+        on("session:replaced", onReplaced);
+
+        // Init P2P connections with existing peers
+        if (myPeerIdRef.current) {
+          const peerSids = Object.keys(peersRef.current);
+          if (peerSids.length > 0) {
+            initP2P(socket, myPeerIdRef.current, peerSids, localStreamRef.current, iceServersRef.current);
+          }
+        }
+        const localTrack = localStreamRef.current?.getAudioTracks?.()[0];
+        socket.emit("p2p:muted", { muted: localTrack ? !localTrack.enabled : true });
+
+        // Auto-enable mic for random chat
+        if (shouldAutoEnableMic && localStreamRef.current) {
+          const track = localStreamRef.current.getAudioTracks()[0];
+          if (track) {
+            replaceLocalStream(localStreamRef.current);
+            if (user?.id) monitorLocalTrackVolume(user.id, track);
+          }
+        }
+
+        window.addEventListener("beforeunload", cleanupAll);
+        return;
+      }
 
       try {
         const routerRtpCapabilities = await new Promise<any>(
@@ -960,6 +1237,8 @@ export function useMediasoup() {
             (res: any) => (res?.error ? reject(res.error) : resolve(res))
           );
         });
+        // Capture ICE/TURN servers from transport params for P2P connections
+        if (sendTpParams.iceServers) iceServersRef.current = sendTpParams.iceServers;
         const sendTransport: SendTransport = (
           device as any
         ).createSendTransport(sendTpParams);
@@ -1095,6 +1374,19 @@ export function useMediasoup() {
             }
           }
         }
+
+        // If mic was auto-enabled (random chat), start producing
+        if (shouldAutoEnableMic && localStreamRef.current) {
+          const track = localStreamRef.current.getAudioTracks()[0];
+          if (track && sendTransportRef.current) {
+            try {
+              const producer = await (sendTransportRef.current as any).produce({ track });
+              producersRef.current[producer.id] = producer;
+              setProducing(true);
+              if (user?.id) monitorLocalTrackVolume(user.id, track);
+            } catch {}
+          }
+        }
       } catch (err) {
         cleanupAll();
         throw err;
@@ -1106,12 +1398,19 @@ export function useMediasoup() {
       attachConsumerTrack,
       attachToScreenStage,
       cleanupAll,
+      clearSpeaking,
       consumeDataProducer,
       consumeProducer,
       createDataProducerIfNeeded,
       flushPendingProducers,
       ensureConsumeScreenProducer,
+      monitorLocalTrackVolume,
+      addPeer,
       showSnackbar,
+      handleSignal,
+      initP2P,
+      removePeer,
+      replaceLocalStream,
       router,
     ]
   );
@@ -1119,16 +1418,27 @@ export function useMediasoup() {
   /** Chat */
   const sendChat = useCallback(
     (text: string) => {
-      const dp = dataProducerRef.current;
-      if (!dp || !text || !text.trim()) return;
+      if (!text || !text.trim()) return;
       const now = Date.now();
       const msg = {
         t: "chat",
         id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
-        from: user?.id || "me",
+        from: user?.id || myPeerIdRef.current || "me",
         text: text.slice(0, 16000),
         ts: now,
       };
+
+      if (audioModeRef.current === "p2p") {
+        appendMessage({ id: msg.id, from: "me", text: msg.text, ts: msg.ts });
+        socketRef.current?.emit("p2p:chat", {
+          message: { id: msg.id, from: msg.from, text: msg.text, ts: msg.ts },
+        });
+        return;
+      }
+
+      const dp = dataProducerRef.current;
+      if (!dp) return;
+
       const payload = JSON.stringify(msg);
       const ch: any = (dp as any)._channel || (dp as any).channel || null;
       if (
@@ -1163,22 +1473,34 @@ export function useMediasoup() {
   );
 
   const setTyping = useCallback((on: boolean) => {
-    const dp = dataProducerRef.current;
-    if (!dp) return;
     const now = Date.now();
     if (now - lastTypingSentRef.current < 250) return;
     lastTypingSentRef.current = now;
+
+    if (audioModeRef.current === "p2p") {
+      socketRef.current?.emit("p2p:typing", {
+        payload: {
+          from: user?.id || myPeerIdRef.current || "me",
+          on: !!on,
+          ts: now,
+        },
+      });
+      return;
+    }
+
+    const dp = dataProducerRef.current;
+    if (!dp) return;
     try {
       dp.send(
         JSON.stringify({
           t: "typing",
-          from: myPeerIdRef.current || "me",
+          from: user?.id || myPeerIdRef.current || "me",
           on: !!on,
           ts: now,
         })
       );
     } catch {}
-  }, []);
+  }, [user?.id]);
 
   /** Screen-share control (client side) */
   const requestStartShare = useCallback(async (): Promise<{
@@ -1246,7 +1568,12 @@ export function useMediasoup() {
       return;
     }
 
-    if (!sendTransportRef.current) return;
+    if (audioModeRef.current === "p2p" || !sendTransportRef.current) {
+      showSnackbar("Screen share is available in mediasoup rooms only.", {
+        severity: "info",
+      });
+      return;
+    }
     if (screenVideoProducerRef.current) return;
 
     if (!deviceRef.current?.canProduce("video")) {
@@ -1464,6 +1791,19 @@ export function useMediasoup() {
 
     const turningOn = !track.enabled;
 
+    // P2P mode: toggle track and push to peers directly
+    if (audioModeRef.current === "p2p") {
+      track.enabled = turningOn;
+      setMicOn(turningOn);
+      setProducing(turningOn);
+      replaceLocalStream(turningOn ? stream : null);
+      socketRef.current?.emit("p2p:muted", { muted: !turningOn });
+      if (turningOn && user?.id) monitorLocalTrackVolume(user.id, track);
+      if (!turningOn) { stopLocalAudioMeter(); if (user?.id) clearSpeaking(user.id); }
+      return;
+    }
+
+    // SFU mode: use mediasoup producer
     if (turningOn) {
       if (!sendTransportRef.current) return;
 
@@ -1484,6 +1824,10 @@ export function useMediasoup() {
 
       track.enabled = true;
       setMicOn(true);
+      // Monitor local audio for speaking indicator
+      if (user?.id) monitorLocalTrackVolume(user.id, track);
+      // Update P2P connections with the new stream
+      replaceLocalStream(stream);
       try {
         socketRef.current?.emit("producerMuted", { muted: false });
       } catch {}
@@ -1492,6 +1836,8 @@ export function useMediasoup() {
 
     track.enabled = false;
     setMicOn(false);
+    stopLocalAudioMeter();
+    if (user?.id) clearSpeaking(user.id);
 
     const producer = Object.values(producersRef.current)[0] as any | undefined;
     if (producer) {
@@ -1502,7 +1848,7 @@ export function useMediasoup() {
     try {
       socketRef.current?.emit("producerMuted", { muted: true });
     } catch {}
-  }, []);
+  }, [clearSpeaking, monitorLocalTrackVolume, replaceLocalStream, showSnackbar, stopLocalAudioMeter, user?.id]);
 
   useEffect(() => {
     return () => {
@@ -1522,7 +1868,7 @@ export function useMediasoup() {
     messages,
     sendChat,
     setTyping,
-
+    speakingByParticipantId,
     startScreenShare,
     stopScreenShare,
     toggleScreenShare,
